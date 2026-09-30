@@ -1,0 +1,32 @@
+[package]
+name = "omaestro"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Hammerspoon for Hyprland: Lua rules for hotkeys, focus, timers, selection and a local model."
+repository = "https://github.com/iluxav/omaestro"
+
+[[bin]]
+name = "om"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive", "env"] }
+mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send"] }
+notify = "8"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt", "macros", "net", "io-util", "process", "signal", "sync", "time"] }
+toml = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[profile.release]
+lto = "thin"
+strip = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }

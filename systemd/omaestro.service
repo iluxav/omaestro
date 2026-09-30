@@ -1,0 +1,17 @@
+[Unit]
+Description=omaestro: Lua automation rules for Hyprland
+Documentation=https://github.com/iluxav/omaestro
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# `cargo install --path .` puts the binary here. Adjust if yours lives elsewhere.
+ExecStart=%h/.cargo/bin/om daemon
+Restart=on-failure
+RestartSec=2
+# Exit code 2 means the daemon was started outside the Hyprland session
+# (HYPRLAND_INSTANCE_SIGNATURE unset). Restarting cannot fix that.
+RestartPreventExitStatus=2
+
+[Install]
+WantedBy=graphical-session.target
