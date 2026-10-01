@@ -2,6 +2,13 @@
   <img src="assets/omaestro-logo-512.png" width="160" alt="omaestro">
 </p>
 
+<p align="center">
+  <a href="https://github.com/iluxav/omaestro/actions/workflows/ci.yml"><img src="https://github.com/iluxav/omaestro/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/iluxav/omaestro/releases"><img src="https://img.shields.io/github/v/release/iluxav/omaestro?label=release" alt="Release"></a>
+  <a href="https://omarchy.org"><img src="https://img.shields.io/badge/Omarchy-plugin-e07a5f" alt="Omarchy plugin"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+</p>
+
 # omaestro
 
 **Hammerspoon for Hyprland.** Small Lua rules that make your Omarchy desktop
