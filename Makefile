@@ -40,6 +40,9 @@ uninstall:        ## the reverse; your rules in ~/.config/omaestro stay
 	-cargo uninstall omaestro
 
 plugin:           ## link this checkout into the Omarchy shell as the plugin (panel + service) and enable it
+	@if [ -d "$(PLUGIN_LINK)" ] && [ ! -L "$(PLUGIN_LINK)" ]; then \
+	  echo "$(PLUGIN_LINK) is a directory (a marketplace install?), not a link;"; \
+	  echo "remove it first: omarchy plugin remove $(PLUGIN_ID) --yes"; exit 1; fi
 	ln -sfn $(CURDIR) $(PLUGIN_LINK)
 	-omarchy-shell shell rescanPlugins
 	@# The rescan runs in the background; enabling an unknown id fails.
