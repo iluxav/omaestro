@@ -21,7 +21,6 @@ mod actions;
 mod api;
 mod app;
 mod app_hotkeys;
-mod builtin;
 mod disabled;
 mod events;
 mod focus;
@@ -32,6 +31,7 @@ mod misc;
 mod modes;
 mod overrides;
 mod shell;
+mod shipped;
 mod store;
 mod system;
 mod timers;
@@ -162,11 +162,17 @@ impl Harness {
         self._state.path().join("config")
     }
 
-    /// Puts a built-in plugin's files under `lib/`, as `om plugin add
-    /// <name>` would. A rule then loads it with `om.use(name)`.
+    /// Puts one of the repository's plugins (`plugins/<name>`) under `lib/`,
+    /// as `om plugin add <name>` would. A rule then loads it with
+    /// `om.use(name)`.
     fn install_builtin(&self, name: &str) {
-        let plugin = crate::plugins::builtin::find(name).unwrap();
-        crate::plugins::builtin::install(&self.config_dir().join("lib"), plugin).unwrap();
+        let from = shipped_plugins_dir().join(name);
+        let to = self.config_dir().join("lib").join(name);
+        std::fs::create_dir_all(&to).unwrap();
+        for entry in std::fs::read_dir(&from).unwrap() {
+            let path = entry.unwrap().path();
+            std::fs::copy(&path, to.join(path.file_name().unwrap())).unwrap();
+        }
     }
 
     /// Sends a request without waiting for the answer.
@@ -244,6 +250,23 @@ impl Harness {
         }
         panic!("handlers never finished");
     }
+}
+
+/// `plugins/` in the repository: omaestro's own plugins.
+fn shipped_plugins_dir() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins")
+}
+
+/// The names of omaestro's own plugins, sorted.
+fn shipped_plugins() -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(shipped_plugins_dir())
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.join("init.lua").is_file())
+        .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    names
 }
 
 /// Gives the runtime a turn. A short sleep rather than a bare yield: under a

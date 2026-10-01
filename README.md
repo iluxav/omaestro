@@ -59,11 +59,12 @@ omarchy plugin add https://github.com/iluxav/omaestro --enable
 The plugin's service downloads the `om` binary for your CPU from this
 repository's releases, checks it against the SHA256 pinned in the plugin,
 links it as `~/.local/bin/om` so the command is in your terminal, and keeps
-the daemon running while you are logged in. Then:
+the daemon running while you are logged in. On its first start it offers
+the starter plugins in a notification, one click. Or from a terminal:
 
 ```sh
-om status              # the daemon, who runs it, what is loaded
-om plugin add panel    # SUPER+ALT+O opens the rules panel in the shell
+om status                                       # the daemon, who runs it, what is loaded
+om plugin add panel window-halves text-tools    # the starter set; SUPER+ALT+O opens the rules panel
 ```
 
 ### From source
@@ -85,12 +86,15 @@ the `input` group.
 
 ## Start with the plugins
 
-Twelve plugins ship inside `om`. Each is a small Lua module with options;
-install one and it works right away:
+omaestro's own plugins live in this repository's [`plugins/`](plugins/)
+directory and install exactly like anyone else's: `om` fetches the
+directory from GitHub, checks it is a plugin, and copies it in. Each is a
+small Lua module with options; install one and it works right away:
 
 ```sh
-om plugin available            # the list, and which are installed
-om plugin add window-halves    # copies it into ~/.config/omaestro/lib/ and writes rules.d/window-halves.lua
+om plugin available                           # the list, fresh from GitHub, and which are installed
+om plugin add window-halves                   # into ~/.config/omaestro/lib/, plus rules.d/window-halves.lua
+om plugin add panel window-halves text-tools  # several at once: the starter set
 ```
 
 | Plugin | What it does |
@@ -110,7 +114,8 @@ om plugin add window-halves    # copies it into ~/.config/omaestro/lib/ and writ
 
 `om plugin add` writes `~/.config/omaestro/rules.d/<name>.lua`, and that
 file is where the options go; each plugin's README (in `lib/<name>/`, or
-[`plugins/`](plugins/) here) lists them:
+[`plugins/`](plugins/) here) lists them. Fixes and new plugins reach you
+with `om plugin update`, no new `om` release needed:
 
 ```lua
 -- rules.d/window-halves.lua
@@ -181,8 +186,10 @@ How rules behave:
 ## Write a plugin, share a plugin
 
 A plugin is a Lua module that rules configure instead of edit: a directory
-with an `init.lua` that returns a table, usually with `setup(opts)`. The
-repository is the package and a tag is a version; there is nothing to
+with an `init.lua` that returns a table, usually with `setup(opts)`, and a
+README. It lives in a public git repository, at its root or in a directory
+of it (one repository can hold several, as this one does). The repository
+is the package and a tag is a version; there is no registry and nothing to
 build.
 
 ```sh
@@ -214,10 +221,21 @@ the options in the README. When it is ready, push the repository to GitHub.
 Others install it with:
 
 ```sh
-om plugin add you/my-plugin              # or the full URL; --ref v1.0 pins a tag
-om plugin update                         # git pull, for all plugins or one
-om plugin remove my-plugin               # also drops the rule it wrote; refuses to lose uncommitted work
+om plugin add you/my-plugin                                  # a repository whose root is the plugin
+om plugin add you/plugins/clock                              # the clock/ directory of you/plugins
+om plugin add https://github.com/you/plugins/tree/main/clock # the same, as copied from the browser
+om plugin add you/my-plugin --ref v1.0                       # a tag or branch
+om plugin add https://git.example.com/x.git --path clock     # any git host
+om plugin add ./my-plugin                                    # a directory on disk, as it is
+om plugin update                                             # the latest of every plugin, or one by name
+om plugin remove my-plugin                                   # also drops the rule it wrote
 ```
+
+`om` keeps a record of where each plugin came from and what it installed:
+`update` and `remove` refuse to throw away changes you made to a plugin's
+files unless you add `--force`. A plugin that needs a newer `om` says so in
+its `init.lua` with a line `-- requires om >= 0.2.0`, and `om plugin add`
+refuses it on an older one.
 
 A plugin is code that runs as you, with everything `om.*` can do. Install
 plugins from people you trust, as you would a Hammerspoon Spoon.
@@ -243,7 +261,8 @@ reload button.
 | `om reload` | reload the rule files now |
 | `om eval 'lua'` / `om repl` | run Lua inside the daemon; inspect state |
 | `om panel` | open or close the rules panel of the Omarchy plugin |
-| `om plugin available \| add \| list \| new \| update \| remove` | the plugins, see above |
+| `om plugin add NAME\|REPO\|URL\|DIR...` | install plugins: one of omaestro's by name, a GitHub repo or a directory in one, any git URL (`--path`, `--ref`), or a directory on disk |
+| `om plugin available \| list \| new \| update \| remove` | omaestro's plugins, yours installed, start your own, take the latest, delete one |
 | `om skill install \| show` | the omaestro skill for AI coding agents (Claude Code: `~/.claude/skills/omaestro`) |
 | `om doctor [--clear]` | the session, the tools, leftover binds; `--clear` removes leftovers |
 | `om daemon [--foreground]` | run the daemon in this terminal |

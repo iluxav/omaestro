@@ -32,6 +32,10 @@ install:          ## om into ~/.cargo/bin and the systemd user unit, enabled
 	install -Dm644 systemd/omaestro.service $(HOME)/.config/systemd/user/omaestro.service
 	systemctl --user daemon-reload
 	systemctl --user enable --now omaestro
+	@echo
+	@echo "omaestro is running. Plugins to start with:"
+	@echo "  om plugin available                              what there is"
+	@echo "  om plugin add panel window-halves text-tools      the starter set (SUPER+ALT+O opens the panel)"
 
 uninstall:        ## the reverse; your rules in ~/.config/omaestro stay
 	-systemctl --user disable --now omaestro

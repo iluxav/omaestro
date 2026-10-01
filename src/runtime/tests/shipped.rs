@@ -1,30 +1,37 @@
-//! Every built-in plugin loads with its defaults, all of them at once: no
-//! errors, no two claiming the same chord, origins inside lib/, and the
-//! README naming each one.
+//! Every plugin in the repository's `plugins/` loads with its defaults, all
+//! of them at once: no errors, no two claiming the same chord, origins
+//! inside lib/, each with a README that says how to install it, and the
+//! README of omaestro naming each one.
 
 use super::*;
-use crate::plugins::builtin;
 
 #[tokio::test]
 async fn all_builtin_plugins_load_together() {
     let h = Harness::start(&[]).await;
+    let plugins = shipped_plugins();
     assert!(
-        builtin::ALL.len() >= 10,
+        plugins.len() >= 10,
         "an essential set was promised, found {}",
-        builtin::ALL.len()
+        plugins.len()
     );
+    for starter in crate::plugins::STARTERS {
+        assert!(
+            plugins.iter().any(|p| p == starter),
+            "starter {starter} is not in plugins/"
+        );
+    }
     let mut files = Vec::new();
-    for plugin in builtin::ALL {
-        h.install_builtin(plugin.name);
+    for name in &plugins {
+        h.install_builtin(name);
         // downloads would watch the real ~/Downloads; give it a directory of its own.
-        let options = if plugin.name == "downloads" {
+        let options = if name == "downloads" {
             "{ dir = om.config_dir }"
         } else {
             "{}"
         };
         files.push((
-            format!("rules.d/{}.lua", plugin.name),
-            format!("om.use(\"{}\").setup({options})", plugin.name),
+            format!("rules.d/{}.lua", name),
+            format!("om.use(\"{}\").setup({options})", name),
         ));
     }
     let refs: Vec<(&str, &str)> = files
@@ -87,11 +94,11 @@ async fn all_builtin_plugins_load_together() {
 #[test]
 fn the_readme_names_every_builtin_plugin() {
     let readme = include_str!("../../../README.md");
-    for plugin in builtin::ALL {
+    for name in shipped_plugins() {
         assert!(
-            readme.contains(&format!("`{}`", plugin.name)),
+            readme.contains(&format!("`{name}`")),
             "README.md does not mention the {} plugin",
-            plugin.name
+            name
         );
     }
 }

@@ -1,5 +1,8 @@
 # reminders
 
+Reminders when you ask for one, a nudge to stand up, and a note at the end
+of the day.
+
 | What | When |
 |---|---|
 | SUPER+ALT+R asks "Remind me in minutes" and notifies you then | on the chord |

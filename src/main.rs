@@ -24,6 +24,7 @@ mod service;
 mod skill;
 #[cfg(test)]
 mod testutil;
+mod welcome;
 
 use backend::Backends;
 use backend::hypr::{Instance, InstanceError};
@@ -132,20 +133,24 @@ enum SkillCommand {
 
 #[derive(Subcommand)]
 enum PluginCommand {
-    /// Install a plugin into lib/ and write the rule that loads it: a
-    /// built-in one by name (see `available`), or a repository by git URL
-    /// or user/repo on GitHub
+    /// Install plugins into lib/ and write the rules that load them. Each is
+    /// a name from omaestro's repository (see `available`), a GitHub repo or
+    /// directory in one (you/repo, you/repo/path, or the browser URL), any
+    /// git URL, or a directory on disk (./dir, /path, ~/dir)
     Add {
-        #[arg(value_name = "NAME|URL")]
-        what: String,
-        /// A tag or branch to pin [default: the default branch]
+        #[arg(value_name = "NAME|URL|DIR", required = true)]
+        what: Vec<String>,
+        /// A tag or branch to take [default: the default branch]
         #[arg(long, value_name = "REF")]
         r#ref: Option<String>,
+        /// The plugin's directory inside the repository [default: its root]
+        #[arg(long, value_name = "DIR")]
+        path: Option<String>,
         /// Only install; do not write rules.d/NAME.lua
         #[arg(long)]
         no_rule: bool,
     },
-    /// The plugins that ship with om, and which are installed
+    /// The plugins in omaestro's repository, and which are installed
     Available,
     /// The installed plugins: name, version, Lua path, source
     List {
@@ -164,12 +169,17 @@ enum PluginCommand {
         #[arg(long)]
         no_rule: bool,
     },
-    /// git pull the plugins that came from a repository (all, or one)
-    Update { name: Option<String> },
-    /// Delete a plugin from lib/
+    /// Take the latest of each plugin (or one) from where it came from
+    Update {
+        name: Option<String>,
+        /// Even over changes you made to it
+        #[arg(long)]
+        force: bool,
+    },
+    /// Delete a plugin from lib/, and the rule `add` wrote for it
     Remove {
         name: String,
-        /// Even with uncommitted or unpushed work in it
+        /// Even with changes or unpushed work in it
         #[arg(long)]
         force: bool,
     },
@@ -245,20 +255,34 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                 None => config::default_config_dir()?,
             };
             let lib = config_dir.join("lib");
+            let official = plugins::source::Official::from_env();
             match action {
                 PluginCommand::Add {
                     what,
                     r#ref,
+                    path,
                     no_rule,
-                } => plugins::add(&config_dir, &what, r#ref.as_deref(), !no_rule).await?,
-                PluginCommand::Available => plugins::available(&config_dir)?,
+                } => {
+                    plugins::add(
+                        &config_dir,
+                        &what,
+                        r#ref.as_deref(),
+                        path.as_deref(),
+                        !no_rule,
+                        &official,
+                    )
+                    .await?
+                }
+                PluginCommand::Available => plugins::available(&config_dir, &official).await?,
                 PluginCommand::List { json } => plugins::list(&lib, json).await?,
                 PluginCommand::New {
                     name,
                     no_edit,
                     no_rule,
                 } => plugins::new(&config_dir, &name, !no_edit, !no_rule).await?,
-                PluginCommand::Update { name } => plugins::update(&lib, name.as_deref()).await?,
+                PluginCommand::Update { name, force } => {
+                    plugins::update(&lib, name.as_deref(), force, &official).await?
+                }
                 PluginCommand::Remove { name, force } => {
                     plugins::remove(&config_dir, &name, force).await?
                 }
@@ -275,8 +299,14 @@ async fn daemon(socket: &Path, config_dir: Option<PathBuf>, foreground: bool) ->
         Some(dir) => dir,
         None => config::default_config_dir()?,
     };
+    // A first start on this machine: say where things go, and offer the
+    // starter plugins once the daemon runs.
+    let fresh = !config_dir.exists();
     fs::create_dir_all(&config_dir)
         .with_context(|| format!("creating {}", config_dir.display()))?;
+    if fresh && let Err(err) = welcome::write_init(&config_dir) {
+        tracing::warn!("could not write a starter init.lua: {err:#}");
+    }
 
     let listener = ipc::bind(socket)?;
     let _socket_file = RemoveOnDrop(socket.to_path_buf());
@@ -307,6 +337,19 @@ async fn daemon(socket: &Path, config_dir: Option<PathBuf>, foreground: bool) ->
         .map_err(anyhow::Error::msg)?;
 
     tokio::spawn(ipc::serve(listener, events.clone()));
+    if fresh {
+        let dir = config_dir.clone();
+        tokio::spawn(async move {
+            let notifier = backend::notify::NotifySend;
+            welcome::offer(&notifier, |names| async move {
+                let official = plugins::source::Official::from_env();
+                plugins::add(&dir, &names, None, None, true, &official)
+                    .await
+                    .map_err(|err| format!("{err:#}"))
+            })
+            .await;
+        });
+    }
     tokio::spawn(shutdown_on_signal(events));
     tracing::info!(
         "omaestro {} ready: rules in {}, socket {}",

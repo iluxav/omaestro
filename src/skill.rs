@@ -51,12 +51,10 @@ mod tests {
         ] {
             assert!(SKILL.contains(name), "the skill does not mention {name}");
         }
-        for plugin in crate::plugins::builtin::ALL {
-            assert!(
-                SKILL.contains(plugin.name),
-                "the skill does not list {}",
-                plugin.name
-            );
+        let plugins = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        for entry in std::fs::read_dir(plugins).unwrap() {
+            let name = entry.unwrap().file_name().to_string_lossy().to_string();
+            assert!(SKILL.contains(&name), "the skill does not list {name}");
         }
         assert!(SKILL.starts_with("---\nname: omaestro\n"));
     }

@@ -632,7 +632,7 @@ else
   skip "typed triggers: this user is not in the input group"
 fi
 
-echo "# plugins (om plugin: git repositories under lib/)"
+echo "# plugins (om plugin: from repositories or directories into lib/)"
 PLUG="$TMP/om-smoke-plugin"
 mkdir -p "$PLUG"
 (
@@ -641,7 +641,7 @@ mkdir -p "$PLUG"
     git -c user.name=smoke -c user.email=smoke@test add -A &&
     git -c user.name=smoke -c user.email=smoke@test commit --quiet -m first
 ) >/dev/null 2>&1
-check "om plugin add clones a repository into lib/" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$PLUG" --no-rule
+check "om plugin add takes a repository into lib/" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$PLUG" --no-rule
 check "om plugin list shows it with its Lua path" sh -c "OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin list | grep -q 'om-smoke-plugin .*lib/om-smoke-plugin/init.lua'"
 cat >"$CFG/init.lua" <<'EOF'
 om.use("om-smoke-plugin").setup()
@@ -649,17 +649,27 @@ EOF
 wait_for "a rule loads it with om.use" status_has "triggers:  1"
 check "om trigger plugin-says" "$OM" trigger plugin-says
 wait_for "and the plugin's handler ran" notified "hello from the plugin"
-check "om plugin available lists the built-in ones" sh -c "OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin available | grep -q '^window-halves '"
-check "om plugin add <built-in> copies it out of the binary and writes its rule" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add window-halves
+# omaestro's own plugins come from a repository like anyone's; this
+# checkout stands in for github.com/iluxav/omaestro (its committed HEAD).
+export OMAESTRO_PLUGIN_REPO="$PWD"
+check "om plugin available lists the repository's plugins" sh -c "OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin available | grep -q '^window-halves '"
+check "om plugin add <name> fetches plugins/<name> from it and writes its rule" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add window-halves
 check "the rule file is there" test -f "$CFG/rules.d/window-halves.lua"
+check "a copy of that one directory, with a record of where it came from" test -f "$CFG/lib/window-halves/.om-source.json" -a ! -e "$CFG/lib/window-halves/.git"
 has_halves() { nested_binds | grep -qF "omaestro: lib/window-halves/init.lua"; }
 lacks_halves() { ! has_halves; }
 wait_for "its rule loads and its hotkeys bind, with lib/ origins" has_halves
-check "om plugin list knows it is built in" sh -c "OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin list | grep -q 'window-halves .*built-in'"
+check "om plugin list names its source" sh -c "OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin list | grep -q 'window-halves .* .*plugins/window-halves'"
 check "om plugin remove drops it and its rule" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin remove window-halves
 check "the rule file went with it" test ! -e "$CFG/rules.d/window-halves.lua"
 wait_for "and its binds are gone" lacks_halves
-check "om plugin update pulls" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin update
+check "a repository with --path, and a directory on disk, install the same way" \
+  env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$PWD" --path plugins/reminders --no-rule
+check "  (the directory)" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$PWD/plugins/web-search" --no-rule
+check "  both removed again" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin remove reminders
+env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin remove web-search >/dev/null 2>&1
+unset OMAESTRO_PLUGIN_REPO
+check "om plugin update takes the latest" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin update
 check "om plugin new makes a plugin skeleton" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin new smoke-mine --no-edit
 check "with an init.lua and a git repository" test -f "$CFG/lib/smoke-mine/init.lua" -a -d "$CFG/lib/smoke-mine/.git"
 check "which loads as a plugin" "$OM" eval 'return om.use("smoke-mine") ~= nil'
