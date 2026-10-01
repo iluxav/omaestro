@@ -314,6 +314,16 @@ Item {
             Layout.fillWidth: true
             spacing: Style.spacing.lg
 
+            // The logo, from the plugin's own directory.
+            Image {
+              Layout.alignment: Qt.AlignVCenter
+              source: Qt.resolvedUrl("assets/omaestro-logo-512.png")
+              sourceSize.width: Style.space(44)
+              sourceSize.height: Style.space(44)
+              fillMode: Image.PreserveAspectFit
+              smooth: true
+            }
+
             Column {
               Layout.fillWidth: true
               spacing: Style.spacing.xs

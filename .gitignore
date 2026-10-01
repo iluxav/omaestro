@@ -5,3 +5,5 @@
 # Private notes: every Markdown file except the README stays out of the repo.
 *.md
 !README.md
+!SKILL.md
+ROADMAP.md

@@ -1,0 +1,88 @@
+# A tag `vX.Y.Z` builds `om` for x86_64 and aarch64 (native runners, no
+# cross-compiling), publishes both as a GitHub release together with their
+# SHA256 sums, and pins those sums in release.sha256 on the default branch,
+# which is what the Omarchy plugin (scripts/plugin-start.sh) checks a
+# download against.
+#
+# Before tagging: set the same version in Cargo.toml and manifest.json.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: The tag, Cargo.toml and manifest.json must agree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          cargo_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)"
+          manifest_version="$(python3 -c 'import json; print(json.load(open("manifest.json"))["version"])')"
+          if [[ "$tag" != "$cargo_version" || "$tag" != "$manifest_version" ]]; then
+            echo "tag $tag, Cargo.toml $cargo_version, manifest.json $manifest_version: make them agree" >&2
+            exit 1
+          fi
+      - name: The runner's architecture is the one this job names
+        run: test "$(uname -m)" = "${{ matrix.arch }}"
+      - run: cargo build --release --locked
+      - run: mkdir dist && cp target/release/om "dist/om-${{ matrix.arch }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: om-${{ matrix.arch }}
+          path: dist/om-${{ matrix.arch }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums, in the form scripts/plugin-start.sh reads
+        run: |
+          cd dist
+          chmod +x om-*
+          for f in om-*; do
+            echo "$(sha256sum "$f" | cut -d' ' -f1) ${f#om-}"
+          done > release.sha256
+          cat release.sha256
+      - name: GitHub release with the binaries
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/om-x86_64 dist/om-aarch64 dist/release.sha256 \
+            --title "omaestro $GITHUB_REF_NAME" \
+            --notes "Prebuilt \`om\` for x86_64 and aarch64, as the Omarchy plugin downloads them. SHA256 sums in release.sha256."
+      - name: Pin the checksums in the repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          default="$(git remote show origin | sed -n 's/.*HEAD branch: //p')"
+          git checkout "$default"
+          cp dist/release.sha256 release.sha256
+          if git diff --quiet -- release.sha256; then
+            echo "release.sha256 already pins these binaries"
+            exit 0
+          fi
+          git add release.sha256
+          git commit -m "Pin the $GITHUB_REF_NAME binaries in release.sha256"
+          git push origin "$default"

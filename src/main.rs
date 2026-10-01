@@ -21,6 +21,7 @@ mod luajson;
 mod plugins;
 mod runtime;
 mod service;
+mod skill;
 #[cfg(test)]
 mod testutil;
 
@@ -103,6 +104,11 @@ enum Command {
         #[arg(long)]
         clear: bool,
     },
+    /// The omaestro skill for AI coding agents: install it, or print it
+    Skill {
+        #[command(subcommand)]
+        action: SkillCommand,
+    },
     /// Plugins: Lua modules in ~/.config/omaestro/lib, loaded with om.use(name)
     Plugin {
         /// Directory with init.lua, rules.d/ and lib/ [default: ~/.config/omaestro]
@@ -111,6 +117,17 @@ enum Command {
         #[command(subcommand)]
         action: PluginCommand,
     },
+}
+
+#[derive(Subcommand)]
+enum SkillCommand {
+    /// Write SKILL.md where Claude Code looks (~/.claude/skills/omaestro), or into DIR
+    Install {
+        #[arg(long, value_name = "DIR")]
+        dir: Option<PathBuf>,
+    },
+    /// Print it, for any other agent or a read
+    Show,
 }
 
 #[derive(Subcommand)]
@@ -215,6 +232,13 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                 return Ok(ExitCode::FAILURE);
             }
         }
+        Command::Skill { action } => match action {
+            SkillCommand::Install { dir } => {
+                let path = skill::install(dir.as_deref())?;
+                println!("installed the omaestro skill at {}", path.display());
+            }
+            SkillCommand::Show => skill::show(),
+        },
         Command::Plugin { config_dir, action } => {
             let config_dir = match config_dir {
                 Some(dir) => dir,

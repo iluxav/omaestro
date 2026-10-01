@@ -18,9 +18,11 @@ url="https://github.com/iluxav/omaestro/releases/download/v$version/om-$arch"
 download=0
 if [[ -n "${OMAESTRO_BIN:-}" ]]; then
   bin="$OMAESTRO_BIN"
-elif bin="$(command -v om 2>/dev/null)"; then
-  :
+elif on_path="$(command -v om 2>/dev/null)" && [[ "$(readlink -f "$on_path")" != "$bin_dir/"* ]]; then
+  # A build you installed yourself (`cargo install`, `make install`).
+  bin="$on_path"
 else
+  # Ours: downloaded once per version, and linked as ~/.local/bin/om below.
   bin="$bin_dir/om-$version-$arch"
   download=1
 fi
@@ -58,6 +60,12 @@ if [[ "$download" == 1 ]]; then
     fi
     chmod +x "$tmp"
     mv "$tmp" "$bin"
+  fi
+  # `om` in the terminal: ~/.local/bin is on Omarchy's PATH. Only a link of
+  # ours is replaced; a binary you put there yourself stays.
+  local_bin="$HOME/.local/bin"
+  if [[ ! -e "$local_bin/om" || "$(readlink -f "$local_bin/om" 2>/dev/null)" == "$bin_dir/"* ]]; then
+    mkdir -p "$local_bin" && ln -sfn "$bin" "$local_bin/om"
   fi
 elif [[ ! -x "$bin" ]]; then
   echo "omaestro: $bin is not executable" >&2
