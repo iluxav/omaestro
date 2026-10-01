@@ -51,8 +51,11 @@ default="$(git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')"
 [[ -n "$default" ]] || default="main"
 [[ "$branch" == "$default" ]] || problems+=("on branch '$branch', releases are made from '$default'")
 [[ -z "$(git status --porcelain)" ]] || problems+=("the working tree has uncommitted changes")
-if git fetch -q origin "$default" 2>/dev/null; then
-  [[ "$(git rev-parse HEAD)" == "$(git rev-parse "origin/$default")" ]] ||
+# Compared through ls-remote: nothing is fetched or built from the remote
+# before the checks run on the local, committed tree.
+remote_head="$(git ls-remote --heads origin "$default" 2>/dev/null | cut -f1)"
+if [[ -n "$remote_head" ]]; then
+  [[ "$(git rev-parse HEAD)" == "$remote_head" ]] ||
     problems+=("HEAD is not origin/$default: pull or push first")
 else
   problems+=("cannot reach origin")
@@ -110,8 +113,11 @@ if [[ -z "$run_id" ]]; then
   exit 1
 fi
 if gh run watch "$run_id" --exit-status; then
-  git pull -q --ff-only origin "$default"
-  echo "release: $tag is published; release.sha256 pinned and pulled"
+  # The workflow committed release.sha256: take exactly that commit, by SHA.
+  slug="$(git remote get-url origin | sed -n 's#.*github.com[:/]\(.*\)\.git$#\1#p')"
+  pinned="$(gh api "repos/$slug/commits/$default" --jq .sha)"
+  git fetch -q origin "$pinned" && git merge -q --ff-only "$pinned"
+  echo "release: $tag is published; release.sha256 pinned in $pinned and pulled"
   gh release view "$tag" --json url --jq .url
 else
   echo "release: the workflow failed; gh run view $run_id --log-failed" >&2
