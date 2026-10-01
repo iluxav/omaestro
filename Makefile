@@ -50,8 +50,8 @@ plugin:           ## link this checkout into the Omarchy shell as the plugin (pa
 	omarchy plugin enable $(PLUGIN_ID)
 	@echo "open the panel with: omarchy-shell shell toggle $(PLUGIN_ID)"
 
-plugin-reload:    ## make the shell re-read Panel.qml and Service.qml (its file watch does not follow the link)
-	omarchy-shell shell rescanPlugins
+plugin-reload:    ## make the shell re-read Panel.qml and Service.qml: a shell restart (the plugin is keepLoaded)
+	omarchy restart shell
 
 plugin-remove:    ## the reverse: disable it and remove the link; this checkout stays
 	-omarchy plugin disable $(PLUGIN_ID)

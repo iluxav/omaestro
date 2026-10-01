@@ -1,6 +1,6 @@
 // The Omarchy plugin's panel: every rule the daemon has, grouped by the
-// file it comes from, each with a switch; the override switch (whether
-// rules may take chords Hyprland already uses), with a warning while it is
+// file it comes from, each with a switch; above them the override switch
+// (whether rules may take chords Hyprland already uses), red while it is
 // on; and a reload button. Summon it with
 //   omarchy-shell shell toggle io.github.iluxav.omaestro
 // (`om panel`, or the panel plugin's SUPER+ALT+O). Everything goes through
@@ -333,17 +333,6 @@ Item {
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
               }
-              // The one state worth a warning on every open.
-              Text {
-                textFormat: Text.PlainText
-                visible: root.overrideOn
-                text: "Override on: rules take shortcuts Omarchy or your Hyprland config already use"
-                  + (root.takenCount > 0 ? " (" + root.takenCount + " taken)" : "")
-                color: Color.urgent
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                font.bold: true
-              }
             }
 
             Button {
@@ -358,6 +347,51 @@ Item {
               bordered: true
               foreground: Color.popups.text
               onClicked: root.dismiss()
+            }
+          }
+
+          // Who wins a chord: a setting of the whole panel, above the rules
+          // and not shaped like one. Off, Hyprland's own binds win and a rule
+          // on one of them is refused; on (after a warning), the rules win.
+          RowLayout {
+            Layout.fillWidth: true
+            spacing: Style.spacing.lg
+
+            ToggleSwitch {
+              Layout.alignment: Qt.AlignVCenter
+              checked: root.overrideOn
+              foreground: root.overrideOn ? Color.urgent : Color.popups.text
+              accent: root.overrideOn ? Color.urgent : Color.accent
+              onToggled: root.overrideOn ? root.setOverride(false) : root.askOverride()
+            }
+
+            Column {
+              Layout.fillWidth: true
+              spacing: Style.spacing.xxs
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                text: root.overrideOn
+                  ? "Override on: rules take over Hyprland's own shortcuts"
+                    + (root.takenCount > 0 ? " (" + root.takenCount + " taken)" : "")
+                  : "Override off: Hyprland's own shortcuts win"
+                color: root.overrideOn ? Color.urgent : Color.popups.text
+                font.family: Style.font.family
+                font.pixelSize: Style.font.body
+                font.bold: root.overrideOn
+              }
+              Text {
+                width: parent.width
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                text: root.overrideOn
+                  ? "A replaced shortcut comes back when its rule goes or this is turned off"
+                  : "A rule on a chord Omarchy or your config already uses is refused and says so"
+                color: Qt.darker(Color.popups.text, 1.4)
+                font.family: Style.font.family
+                font.pixelSize: Style.font.caption
+              }
             }
           }
 
@@ -377,6 +411,7 @@ Item {
             model: root.grouped
             delegate: Column {
               required property var modelData
+              required property int index
               width: list.width
               spacing: Style.spacing.sm
               // The file (or plugin) the next rows come from.
@@ -407,24 +442,6 @@ Item {
             color: root.error !== "" ? Color.urgent : Qt.darker(Color.popups.text, 1.4)
             font.family: Style.font.family
             font.pixelSize: Style.font.body
-          }
-
-          PanelSeparator {
-            Layout.fillWidth: true
-            foreground: Color.popups.text
-          }
-
-          // Who wins a chord. Off: Hyprland's own binds, and a rule on one of
-          // them is refused. On: the rules, after a warning.
-          Toggle {
-            Layout.fillWidth: true
-            label: "Override Hyprland's own shortcuts"
-            description: root.overrideOn
-              ? "On: a rule takes its chord even if Omarchy or your config already uses it; the shortcut comes back when the rule goes or this is turned off"
-              : "Off: a rule on a chord Omarchy or your config already uses is refused and says so"
-            checked: root.overrideOn
-            foreground: root.overrideOn ? Color.urgent : Color.popups.text
-            onClicked: root.overrideOn ? root.setOverride(false) : root.askOverride()
           }
 
           Text {

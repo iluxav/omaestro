@@ -57,7 +57,7 @@ already answering.
 
 The plugin also adds a panel to the shell: every rule with a switch,
 grouped by file or plugin (an app hotkey says which app and whether it is
-bound right now), the override switch with a warning while it is on, and a
+bound right now), the override switch above them, red while it is on, and a
 reload button. `om panel` opens and closes it, as does
 `omarchy-shell shell toggle io.github.iluxav.omaestro`; put either on a key
 with the `panel` plugin (`om plugin add panel`, SUPER+ALT+O) or a bind in
@@ -616,7 +616,7 @@ make check                                   # fmt, clippy and the tests; no dis
 make smoke                                   # live checks; run inside the Hyprland session
 make smoke-press                             # the same, plus a hotkey you press by hand
 make plugin                                  # link this checkout into the Omarchy shell as the plugin, enabled
-make plugin-reload                           # after editing Panel.qml or Service.qml: the shell re-reads them
+make plugin-reload                           # after editing Panel.qml or Service.qml: restarts the shell so it re-reads them
 make plugin-remove                           # disable it and remove the link
 make help                                    # the other targets: install, uninstall, dist, release
 ```
@@ -624,9 +624,11 @@ make help                                    # the other targets: install, unins
 The Makefile only names the tasks; the work is in `cargo` and `scripts/`.
 
 `make plugin` is how to try `Panel.qml` and `Service.qml` from a checkout:
-the shell loads them through a symlink in `~/.config/omarchy/plugins/`. Its
-file watch does not follow the link, so after editing them run
-`make plugin-reload` (or `make plugin` again) and the shell re-reads them. With `om` on PATH (`make install`) the plugin's service
+the shell loads them through a symlink in `~/.config/omarchy/plugins/`. The
+shell's file watch does not follow the link, and the plugin is `keepLoaded`
+(so that its service, and a daemon it supervises, survive plugin hot
+reloads), so after editing them run `make plugin-reload`, which restarts the
+shell. With `om` on PATH (`make install`) the plugin's service
 runs that binary instead of downloading a release, and if the systemd unit's
 daemon is already running it leaves it alone and just checks again every
 minute. Open the panel with `omarchy-shell shell toggle
