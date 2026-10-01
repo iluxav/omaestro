@@ -1,7 +1,7 @@
 # The repo's tasks in one place. Cargo does the building; the scripts do the
 # procedures (a live smoke test, a release, the plugin's start-up).
 
-.PHONY: build build-release test lint check smoke smoke-press install uninstall plugin plugin-reload plugin-remove release release-dry dist clean
+.PHONY: build build-release test lint check smoke smoke-press install uninstall plugin plugin-reload plugin-remove release release-dry preview dist clean
 
 PLUGIN_ID = io.github.iluxav.omaestro
 PLUGIN_LINK = $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
@@ -63,6 +63,9 @@ release:          ## bump the version, commit, tag vX.Y.Z, push; CI builds and p
 
 release-dry:      ## the checks and the plan for `make release`, without changing anything
 	scripts/release.sh --dry-run $(if $(VERSION),--version $(VERSION),--bump $(or $(BUMP),patch))
+
+preview:          ## preview.png for the marketplace: the panel in a nested Hyprland (run inside a session)
+	scripts/preview.sh
 
 dist:             ## release binary for this machine's arch plus its SHA256 in release.sha256, by hand
 	scripts/dist.sh

@@ -410,34 +410,47 @@ Item {
             foreground: Color.popups.text
           }
 
-          ListView {
+          // The rows, in a column so the card grows to fit them exactly (a
+          // ListView only estimates its content height); when the screen is
+          // too small the column scrolls.
+          Flickable {
             id: list
             Layout.fillWidth: true
             Layout.fillHeight: true
-            implicitHeight: contentHeight
+            implicitHeight: rows.implicitHeight
+            contentHeight: rows.implicitHeight
             visible: root.grouped.length > 0
             clip: true
-            spacing: Style.spacing.sm
-            model: root.grouped
-            delegate: Column {
-              required property var modelData
-              required property int index
+            boundsBehavior: Flickable.StopAtBounds
+
+            Column {
+              id: rows
               width: list.width
               spacing: Style.spacing.sm
-              // The file (or plugin) the next rows come from.
-              PanelSectionHeader {
-                visible: modelData.first
-                text: modelData.section
-                foreground: Color.popups.text
-                topPadding: modelData.first && index > 0 ? Style.spacing.lg : Style.spacing.xs
-              }
-              Toggle {
-                width: parent.width
-                label: root.label(modelData)
-                description: root.describe(modelData)
-                checked: root.busyId === modelData.id ? !modelData.enabled : modelData.enabled
-                foreground: modelData.problem && modelData.enabled ? Color.urgent : Color.popups.text
-                onClicked: root.setEnabled(modelData.id, !modelData.enabled)
+
+              Repeater {
+                model: root.grouped
+                delegate: Column {
+                  required property var modelData
+                  required property int index
+                  width: rows.width
+                  spacing: Style.spacing.sm
+                  // The file (or plugin) the next rows come from.
+                  PanelSectionHeader {
+                    visible: modelData.first
+                    text: modelData.section
+                    foreground: Color.popups.text
+                    topPadding: modelData.first && index > 0 ? Style.spacing.lg : Style.spacing.xs
+                  }
+                  Toggle {
+                    width: parent.width
+                    label: root.label(modelData)
+                    description: root.describe(modelData)
+                    checked: root.busyId === modelData.id ? !modelData.enabled : modelData.enabled
+                    foreground: modelData.problem && modelData.enabled ? Color.urgent : Color.popups.text
+                    onClicked: root.setEnabled(modelData.id, !modelData.enabled)
+                  }
+                }
               }
             }
           }
