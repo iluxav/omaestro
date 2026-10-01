@@ -77,13 +77,18 @@ impl FakeNotifier {
     }
 }
 
-/// Takes one from a countdown, if any are left.
+/// Takes one from a countdown, if any are left. A plain compare-exchange
+/// loop: `fetch_update` is deprecated on newer toolchains (renamed
+/// `try_update`, which older ones lack).
 fn take(counter: &AtomicUsize) -> bool {
-    counter
-        .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
-            left.checked_sub(1)
-        })
-        .is_ok()
+    let mut left = counter.load(Ordering::SeqCst);
+    while left > 0 {
+        match counter.compare_exchange(left, left - 1, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return true,
+            Err(now) => left = now,
+        }
+    }
+    false
 }
 
 impl Notifier for FakeNotifier {
