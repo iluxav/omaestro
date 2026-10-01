@@ -403,12 +403,19 @@ injects keystrokes or uses the clipboard runs in a nested compositor with a
 scratch config, and the panel is loaded in quickshell there. GitHub Actions
 run the checks on every push.
 
-Releasing: set the same version in `Cargo.toml` and `manifest.json`, tag
-`vX.Y.Z` and push the tag. The release workflow builds `om` for x86_64 and
-aarch64, publishes both with their SHA256 sums, and commits the sums to
-`release.sha256` on the default branch; the Omarchy plugin downloads the
-binary of the version in `manifest.json` and refuses one that does not
-match.
+Releasing is one command from a clean, pushed `main`:
+
+```sh
+make release                 # 0.1.0 -> 0.1.1; BUMP=minor or BUMP=major, or VERSION=1.2.3
+make release-dry             # the checks and the plan, nothing changed
+```
+
+It sets the version in `Cargo.toml`, `Cargo.lock` and `manifest.json`,
+commits, tags `vX.Y.Z`, pushes, then waits for the release workflow: `om`
+built for x86_64 and aarch64, a GitHub release with both and their SHA256
+sums, and the sums committed to `release.sha256` on `main` (pulled back for
+you). The Omarchy plugin downloads the binary of the version in
+`manifest.json` and refuses one whose sum does not match.
 
 ## Remove
 

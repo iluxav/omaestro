@@ -1,7 +1,7 @@
 # The repo's tasks in one place. Cargo does the building; the scripts do the
 # procedures (a live smoke test, a release, the plugin's start-up).
 
-.PHONY: build release test lint check smoke smoke-press install uninstall plugin plugin-reload plugin-remove dist clean
+.PHONY: build build-release test lint check smoke smoke-press install uninstall plugin plugin-reload plugin-remove release release-dry dist clean
 
 PLUGIN_ID = io.github.iluxav.omaestro
 PLUGIN_LINK = $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
@@ -9,7 +9,7 @@ PLUGIN_LINK = $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
 build:            ## debug binary at target/debug/om
 	cargo build
 
-release:          ## optimized binary at target/release/om
+build-release:    ## optimized binary at target/release/om
 	cargo build --release
 
 test:             ## unit tests, no display or Hyprland needed
@@ -58,8 +58,14 @@ plugin-remove:    ## the reverse: disable it and remove the link; this checkout 
 	rm -f $(PLUGIN_LINK)
 	-omarchy-shell shell rescanPlugins
 
-dist:             ## release binary for this machine's arch plus its SHA256 in release.sha256
-	scripts/release.sh
+release:          ## bump the version, commit, tag vX.Y.Z, push; CI builds and publishes. BUMP=patch|minor|major or VERSION=x.y.z
+	scripts/release.sh $(if $(VERSION),--version $(VERSION),--bump $(or $(BUMP),patch))
+
+release-dry:      ## the checks and the plan for `make release`, without changing anything
+	scripts/release.sh --dry-run $(if $(VERSION),--version $(VERSION),--bump $(or $(BUMP),patch))
+
+dist:             ## release binary for this machine's arch plus its SHA256 in release.sha256, by hand
+	scripts/dist.sh
 
 clean:
 	cargo clean

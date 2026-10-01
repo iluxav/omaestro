@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Builds the release binary for this machine's architecture, prints its
-# SHA256, and records it in release.sha256 (what scripts/plugin-start.sh
-# checks downloads against). Run it on an x86_64 and on an aarch64 machine
-# (or with `cross`), then attach dist/om-<arch> to the GitHub release
-# `v<version>` and commit release.sha256.
+# `make dist`: builds the release binary for this machine's architecture,
+# prints its SHA256, and records it in release.sha256 (what
+# scripts/plugin-start.sh checks downloads against). This is the by-hand
+# version of what .github/workflows/release.yml does on a tag for both
+# architectures; `make release` is the normal way to publish.
 
 set -euo pipefail
 
@@ -30,4 +30,4 @@ echo "dist/om-$arch  $sum"
 echo "release.sha256 now holds:"
 cat release.sha256
 echo
-echo "next: gh release create v$version dist/om-$arch  (add the other architecture's file too)"
+echo "next: gh release create v$version dist/om-$arch  (add the other architecture's file too), or use \`make release\`"
