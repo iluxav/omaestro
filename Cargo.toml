@@ -1,6 +1,6 @@
 [package]
 name = "omaestro"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 license = "MIT"
 description = "Hammerspoon for Hyprland: Lua rules for hotkeys, focus, timers, selection and a local model."
