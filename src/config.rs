@@ -26,6 +26,21 @@ pub fn default_config_dir() -> Result<PathBuf> {
     Ok(base.join("omaestro"))
 }
 
+/// `$XDG_STATE_HOME/omaestro`, falling back to `~/.local/state/omaestro`:
+/// where `om.store` keeps its file.
+pub fn default_state_dir() -> Result<PathBuf> {
+    let base =
+        match env::var_os("XDG_STATE_HOME").filter(|v| !v.is_empty()) {
+            Some(dir) => PathBuf::from(dir),
+            None => PathBuf::from(env::var_os("HOME").filter(|v| !v.is_empty()).context(
+                "neither XDG_STATE_HOME nor HOME is set, cannot find the state directory",
+            )?)
+            .join(".local")
+            .join("state"),
+        };
+    Ok(base.join("omaestro"))
+}
+
 /// `$XDG_RUNTIME_DIR/omaestro.sock`.
 pub fn default_socket() -> Result<PathBuf> {
     let dir = env::var_os("XDG_RUNTIME_DIR")
@@ -43,7 +58,23 @@ pub struct Config {
     /// The dmenu-style command `om.prompt` runs; `{label}` is replaced by
     /// the prompt text, quoted. Unset: the first known tool on PATH.
     pub prompt_command: Option<String>,
+    /// The command `om.choose` runs. `{label}` as above; with `{options}`
+    /// the choices are passed as arguments, without it they go to stdin one
+    /// per line. Unset: the first known tool on PATH.
+    pub choose_command: Option<String>,
 }
+
+/// Chooser tools, in order of preference.
+const CHOOSE_TOOLS: [(&str, &str); 5] = [
+    (
+        "omarchy-menu-select",
+        "omarchy-menu-select {label} {options}",
+    ),
+    ("walker", "walker --dmenu -p {label}"),
+    ("wofi", "wofi --dmenu -p {label}"),
+    ("fuzzel", "fuzzel --dmenu --prompt {label}"),
+    ("rofi", "rofi -dmenu -p {label}"),
+];
 
 /// Prompt tools, in order of preference, with the command that shows a
 /// label and prints the typed line.
@@ -147,6 +178,21 @@ impl Config {
             .map(|(_, command)| command.to_string())
             .ok_or_else(|| {
                 "no prompt tool found: install walker or wofi, or set prompt_command in omaestro.toml"
+                    .to_string()
+            })
+    }
+
+    /// The command template `om.choose` runs.
+    pub fn choose_command(&self) -> Result<String, String> {
+        if let Some(command) = &self.choose_command {
+            return Ok(command.clone());
+        }
+        CHOOSE_TOOLS
+            .iter()
+            .find(|(tool, _)| run::find_on_path(tool).is_some())
+            .map(|(_, command)| command.to_string())
+            .ok_or_else(|| {
+                "no chooser tool found: install walker or wofi, or set choose_command in omaestro.toml"
                     .to_string()
             })
     }

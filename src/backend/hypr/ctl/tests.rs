@@ -5,8 +5,9 @@ use super::*;
 fn hotkey(chord: &str, command: &str, description: &str) -> Hotkey {
     Hotkey {
         chord: Chord::parse(chord).unwrap(),
-        command: command.to_string(),
+        action: BindAction::Exec(command.to_string()),
         description: description.to_string(),
+        submap: String::new(),
     }
 }
 
@@ -21,20 +22,36 @@ fn bind_and_unbind_are_plain_config_calls() {
         r#"hl.bind("SUPER + J", hl.dsp.exec_cmd("'/usr/bin/om' trigger 'hotkey:SUPER+J'"), { description = "omaestro: init.lua:3" })"#
     );
     assert_eq!(
-        unbind_code(&Chord::parse("super+shift+j").unwrap()),
+        unbind_code(&Chord::parse("super+shift+j").unwrap(), ""),
         r#"hl.unbind("SUPER + SHIFT + J")"#
     );
 }
 
 #[test]
-fn a_chord_is_pressed_through_send_shortcut() {
+fn submap_binds_are_wrapped_in_define_submap() {
+    let entry = Hotkey {
+        chord: Chord::parse("SUPER + ALT + W").unwrap(),
+        action: BindAction::Submap("om-super+alt+w".into()),
+        description: "omaestro: init.lua:1".into(),
+        submap: String::new(),
+    };
     assert_eq!(
-        shortcut_code(&Chord::parse("ctrl+shift+v").unwrap()),
-        r#"hl.dispatch(hl.dsp.send_shortcut({ mods = "CTRL SHIFT", key = "V" }))"#
+        bind_code(&entry),
+        r#"hl.bind("SUPER + ALT + W", hl.dsp.submap("om-super+alt+w"), { description = "omaestro: init.lua:1" })"#
+    );
+    let key = Hotkey {
+        chord: Chord::parse("h").unwrap(),
+        action: BindAction::Exec("om trigger 'mode:SUPER+ALT+W/H'".into()),
+        description: "omaestro: init.lua:1".into(),
+        submap: "om-super+alt+w".into(),
+    };
+    assert_eq!(
+        bind_code(&key),
+        r#"hl.define_submap("om-super+alt+w", function() hl.bind("H", hl.dsp.exec_cmd("om trigger 'mode:SUPER+ALT+W/H'"), { description = "omaestro: init.lua:1" }) end)"#
     );
     assert_eq!(
-        shortcut_code(&Chord::parse("Return").unwrap()),
-        r#"hl.dispatch(hl.dsp.send_shortcut({ mods = "", key = "Return" }))"#
+        unbind_code(&Chord::parse("Escape").unwrap(), "om-super+alt+w"),
+        r#"hl.define_submap("om-super+alt+w", function() hl.unbind("Escape") end)"#
     );
 }
 
@@ -140,19 +157,62 @@ fn binds_listing() {
 
 #[test]
 fn active_window() {
-    let json = br#"{"address": "0x59ef37d8e800", "mapped": true, "at": [4, 30],
-        "workspace": {"id": 6, "name": "6"}, "floating": false, "class": "google-chrome",
-        "title": "Some page - Google Chrome"}"#;
+    let json = br#"{"address": "0x59ef37d8e800", "mapped": true, "at": [4, 30], "size": [2027, 1694],
+        "workspace": {"id": 6, "name": "6"}, "monitor": 1, "floating": false, "fullscreen": 0, "pinned": false,
+        "class": "google-chrome", "title": "Some page - Google Chrome", "initialClass": "google-chrome",
+        "pid": 4242, "xwayland": false, "focusHistoryID": 0}"#;
     assert_eq!(
         parse_window(json).unwrap(),
         Some(Window {
+            address: "0x59ef37d8e800".into(),
             class: "google-chrome".into(),
             title: "Some page - Google Chrome".into(),
-            address: "0x59ef37d8e800".into(),
+            initial_class: "google-chrome".into(),
             workspace: "6".into(),
+            workspace_id: 6,
+            monitor: 1,
+            x: 4,
+            y: 30,
+            width: 2027,
+            height: 1694,
             floating: false,
+            fullscreen: 0,
+            pinned: false,
+            pid: 4242,
+            xwayland: false,
+            focused: true,
         })
     );
     assert_eq!(parse_window(b"{}").unwrap(), None);
     assert!(parse_window(b"nope").is_err());
+}
+
+#[test]
+fn clients_monitors_and_workspaces() {
+    let clients = parse_clients(
+        br#"[{"address": "0xa", "class": "code", "focusHistoryID": 1, "at": [0, 0], "size": [1, 1]},
+             {"address": "0xb", "class": "foot", "focusHistoryID": 0, "at": [0, 0], "size": [1, 1]}]"#,
+    )
+    .unwrap();
+    assert_eq!(clients.len(), 2);
+    assert!(!clients[0].focused);
+    assert!(clients[1].focused);
+
+    let monitors = parse_monitors(
+        br#"[{"id": 1, "name": "DP-8", "description": "BNQ BenQ RD320U", "width": 3840, "height": 2160,
+             "x": -1728, "y": 0, "scale": 1.25, "transform": 1, "focused": false,
+             "activeWorkspace": {"id": 2, "name": "2"}, "reserved": [0, 26, 28, 0]}]"#,
+    )
+    .unwrap();
+    assert_eq!(monitors[0].name, "DP-8");
+    assert_eq!(monitors[0].workspace_id, 2);
+    assert_eq!(monitors[0].reserved, [0, 26, 28, 0]);
+    assert_eq!(monitors[0].transform, 1);
+
+    let workspaces = parse_workspaces(
+        br#"[{"id": 1, "name": "1", "monitor": "DP-2", "windows": 4, "hasfullscreen": false}]"#,
+    )
+    .unwrap();
+    assert_eq!(workspaces[0].monitor, "DP-2");
+    assert_eq!(workspaces[0].windows, 4);
 }

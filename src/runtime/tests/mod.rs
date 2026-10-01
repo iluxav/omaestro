@@ -2,6 +2,7 @@
 //! talk to the event loop the way the control socket does, assert what the
 //! fakes recorded.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -14,23 +15,41 @@ use crate::backend::fake::{self, Fakes};
 use crate::backend::hypr::events::HyprEvent;
 use crate::config::{CONFIG_FILE, Config};
 use crate::ipc::{Request, Response, Status, TriggerRow};
+use crate::testutil::TempDir;
 
 mod actions;
 mod api;
-mod examples;
+mod app;
+mod app_hotkeys;
+mod builtin;
+mod disabled;
+mod events;
 mod focus;
 mod handlers;
 mod hotkeys;
 mod loading;
+mod misc;
+mod modes;
+mod overrides;
 mod shell;
+mod store;
+mod system;
+mod timers;
+mod typed;
+mod watchers;
+mod windows;
 
 type Files = Vec<(String, String)>;
+
+static NEXT_STATE: AtomicUsize = AtomicUsize::new(0);
 
 struct Harness {
     events: mpsc::Sender<Event>,
     fakes: Fakes,
     files: Arc<Mutex<Files>>,
     runtime: JoinHandle<Exit>,
+    /// Removed with the harness; `om.store` writes here.
+    _state: TempDir,
 }
 
 fn owned(files: &[(&str, &str)]) -> Files {
@@ -61,17 +80,27 @@ impl Harness {
 
     /// `setup` sees the fakes before the first load.
     async fn start_with(files: &[(&str, &str)], setup: impl FnOnce(&Fakes)) -> Self {
+        let state = TempDir::new(&format!(
+            "state-{}",
+            NEXT_STATE.fetch_add(1, Ordering::SeqCst)
+        ));
+        Self::start_on(owned(files), state, setup).await
+    }
+
+    /// A daemon on an existing state directory, as after a restart.
+    async fn start_on(files: Files, state: TempDir, setup: impl FnOnce(&Fakes)) -> Self {
         let (backends, fakes) = fake::backends();
         setup(&fakes);
-        let files = Arc::new(Mutex::new(owned(files)));
+        let files = Arc::new(Mutex::new(files));
         let loader = {
             let files = files.clone();
             Box::new(move || rules(&files.lock().unwrap()))
         };
         let info = Info {
-            config_dir: "/test".into(),
+            config_dir: state.path().join("config"),
             hyprland_instance: "test".into(),
             trigger_command: "om trigger".into(),
+            state_dir: state.path().to_path_buf(),
         };
         let (events, inbox) = mpsc::channel(16);
         let runtime = Runtime::start(loader, backends, info, events.clone())
@@ -83,6 +112,7 @@ impl Harness {
             fakes,
             files,
             runtime,
+            _state: state,
         }
     }
 
@@ -105,6 +135,38 @@ impl Harness {
     async fn stop(self, event: Event) -> (Fakes, Exit) {
         assert!(self.events.send(event).await.is_ok());
         (self.fakes, self.runtime.await.unwrap())
+    }
+
+    /// Stops the daemon and starts a fresh one (new fakes) on the same
+    /// state directory and files.
+    async fn restart(self) -> Self {
+        self.restart_with(|_| {}).await
+    }
+
+    /// Like `restart`; `setup` sees the new fakes before the load.
+    async fn restart_with(self, setup: impl FnOnce(&Fakes)) -> Self {
+        let files = self.files.lock().unwrap().clone();
+        assert!(self.events.send(Event::Shutdown).await.is_ok());
+        assert_eq!(self.runtime.await.unwrap(), Exit::Shutdown);
+        Self::start_on(files, self._state, setup).await
+    }
+
+    /// The state directory, where `om.store` and the settings live.
+    fn state_dir(&self) -> &std::path::Path {
+        self._state.path()
+    }
+
+    /// The config directory the runtime was told about; `lib/` under it is
+    /// on the require path.
+    fn config_dir(&self) -> std::path::PathBuf {
+        self._state.path().join("config")
+    }
+
+    /// Puts a built-in plugin's files under `lib/`, as `om plugin add
+    /// <name>` would. A rule then loads it with `om.use(name)`.
+    fn install_builtin(&self, name: &str) {
+        let plugin = crate::plugins::builtin::find(name).unwrap();
+        crate::plugins::builtin::install(&self.config_dir().join("lib"), plugin).unwrap();
     }
 
     /// Sends a request without waiting for the answer.

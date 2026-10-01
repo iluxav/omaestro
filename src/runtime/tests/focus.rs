@@ -1,13 +1,14 @@
 //! `om.on_focus`, `om.on_blur`, `om.dispatch`, `om.key`, `om.type`.
 
 use super::*;
-use crate::backend::hypr::events::Focused;
+use crate::backend::hypr::events::WinRef;
 
-fn window(class: &str, title: &str, address: &str) -> Option<Focused> {
-    Some(Focused {
+fn window(class: &str, title: &str, address: &str) -> Option<WinRef> {
+    Some(WinRef {
         class: class.into(),
         title: title.into(),
         address: address.into(),
+        workspace: String::new(),
     })
 }
 
@@ -201,9 +202,14 @@ async fn dispatch_key_and_type_reach_the_backends() {
 }
 
 #[tokio::test]
-async fn the_float_example_floats_a_window_once() {
-    let rule = include_str!("../../../examples/float-on-focus.lua");
-    let h = Harness::start(&[("rules.d/float.lua", rule)]).await;
+async fn the_window_rules_plugin_floats_a_window_once() {
+    let h = Harness::start(&[]).await;
+    h.install_builtin("window-rules");
+    assert!(
+        h.save(&[("rules.d/wr.lua", "om.use('window-rules').setup({})")])
+            .await
+            .ok
+    );
     h.hyprland(HyprEvent::Focus(window(
         "org.gnome.Calculator",
         "Calculator",
@@ -224,16 +230,21 @@ async fn the_float_example_floats_a_window_once() {
     assert_eq!(
         h.fakes.journal.entries(),
         [
-            "dispatch hl.dsp.window.float()",
-            "dispatch hl.dsp.window.center()"
+            "dispatch hl.dsp.window.float({ action = \"enable\", window = \"address:0x1\" })",
+            "dispatch hl.dsp.window.center({ window = \"address:0x1\" })"
         ]
     );
 }
 
 #[tokio::test]
-async fn the_date_example_types_todays_date() {
-    let rule = include_str!("../../../examples/type-date.lua");
-    let h = Harness::start(&[("rules.d/date.lua", rule)]).await;
+async fn the_text_tools_plugin_types_todays_date() {
+    let h = Harness::start(&[]).await;
+    h.install_builtin("text-tools");
+    assert!(
+        h.save(&[("rules.d/text.lua", "om.use('text-tools').setup({})")])
+            .await
+            .ok
+    );
     assert!(h.trigger("hotkey:SUPER+ALT+D").await.ok);
     h.settle().await;
     assert!(h.errors().is_empty(), "{:?}", h.errors());

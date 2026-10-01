@@ -13,6 +13,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow = "1"
 clap = { version = "4", features = ["derive", "env"] }
+evdev = { version = "0.13", features = ["tokio"], optional = true }
 mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send"] }
 notify = "8"
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
@@ -30,3 +31,8 @@ strip = true
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util"] }
+
+[features]
+default = ["typed"]
+# Typed triggers (`om.on_typed`) read keyboards through evdev.
+typed = ["dep:evdev"]

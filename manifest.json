@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.iluxav.omaestro",
+  "name": "omaestro",
+  "version": "0.1.0",
+  "author": "iluxav",
+  "license": "MIT",
+  "description": "Hammerspoon for Hyprland: Lua rules for hotkeys, focus, timers, selection and a local model.",
+  "kinds": ["service", "panel"],
+  "keepLoaded": true,
+  "entryPoints": { "service": "Service.qml", "panel": "Panel.qml" }
+}

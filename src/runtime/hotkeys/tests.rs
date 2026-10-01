@@ -9,6 +9,8 @@ fn wanted(chord: &str, origin: &str) -> Wanted {
         id: format!("hotkey:{}", chord.id()),
         chord,
         origin: origin.to_string(),
+        submap: String::new(),
+        action: Action::Trigger,
     }
 }
 
@@ -89,7 +91,7 @@ async fn a_chord_somebody_else_bound_is_refused_and_left_alone() {
         [(
             "hotkey:SUPER+J".to_string(),
             "rules.d/a.lua:3: SUPER + J is already bound in Hyprland (Toggle window split); \
-             remove that bind or pick another chord"
+             remove that bind, pick another chord, or `om override on`"
                 .to_string()
         )]
     );
@@ -99,6 +101,132 @@ async fn a_chord_somebody_else_bound_is_refused_and_left_alone() {
     hotkeys.clear(&hypr).await;
     assert_eq!(hypr.calls(), ["binds"]);
     assert_eq!(hypr.chords(), ["SUPER + J"]);
+}
+
+#[tokio::test]
+async fn a_refused_chord_stays_known_and_binds_once_it_is_free() {
+    let hypr = FakeHypr::default();
+    hypr.add("SUPER + J", "Toggle window split");
+    let mut hotkeys = hotkeys();
+    let j = wanted("SUPER + J", "init.lua:1");
+
+    assert_eq!(
+        hotkeys
+            .sync(&hypr, std::slice::from_ref(&j))
+            .await
+            .rejected
+            .len(),
+        1
+    );
+    assert_eq!(
+        hotkeys.refused().get("hotkey:SUPER+J").map(String::as_str),
+        Some(
+            "SUPER + J is already bound in Hyprland (Toggle window split); \
+             remove that bind, pick another chord, or `om override on`"
+        )
+    );
+    // The same refusal again is not reported twice.
+    assert_eq!(
+        hotkeys.sync(&hypr, std::slice::from_ref(&j)).await,
+        Report::default()
+    );
+
+    // The user drops their bind: the next look binds ours.
+    hypr.unbind(&j.chord, "").await.unwrap();
+    assert_eq!(
+        hotkeys.sync(&hypr, std::slice::from_ref(&j)).await,
+        Report::default()
+    );
+    assert!(hotkeys.refused().is_empty());
+    assert_eq!(hypr.chords(), ["SUPER + J"]);
+}
+
+#[tokio::test]
+async fn with_override_a_foreign_chord_is_taken_and_given_back() {
+    let hypr = FakeHypr::default();
+    hypr.add("SUPER + J", "Toggle window split");
+    let mut hotkeys = hotkeys();
+    hotkeys.set_override(true);
+    let j = wanted("SUPER + J", "rules.d/a.lua:3");
+
+    let report = hotkeys.sync(&hypr, std::slice::from_ref(&j)).await;
+    assert_eq!(
+        report.taken,
+        [(
+            "hotkey:SUPER+J".to_string(),
+            "SUPER + J now runs rules.d/a.lua:3 instead of Toggle window split".to_string()
+        )]
+    );
+    assert!(report.rejected.is_empty() && !report.restore);
+    assert_eq!(
+        hypr.calls(),
+        [
+            "binds",
+            "unbind SUPER + J",
+            "bind SUPER + J -> '/usr/bin/om' trigger 'hotkey:SUPER+J' [omaestro: rules.d/a.lua:3]",
+        ]
+    );
+    assert_eq!(
+        hotkeys
+            .displaced()
+            .get("hotkey:SUPER+J")
+            .map(String::as_str),
+        Some("Toggle window split")
+    );
+
+    // After a Hyprland reload the chord is taken again, without a second notice.
+    hypr.reload_config();
+    assert_eq!(hypr.chords(), ["SUPER + J"], "theirs is back");
+    hypr.forget_calls();
+    assert_eq!(
+        hotkeys.sync(&hypr, std::slice::from_ref(&j)).await,
+        Report::default()
+    );
+    assert_eq!(hypr.calls().len(), 3, "{:?}", hypr.calls());
+    assert_eq!(hypr.chords(), ["SUPER + J"], "ours again");
+
+    // The rule goes away: ours is unbound and the displaced one needs a
+    // config reload to come back.
+    hypr.forget_calls();
+    let report = hotkeys.sync(&hypr, &[]).await;
+    assert!(report.restore);
+    assert_eq!(hypr.calls(), ["binds", "unbind SUPER + J"]);
+    assert!(hotkeys.displaced().is_empty());
+}
+
+#[tokio::test]
+async fn turning_override_off_asks_for_a_reload_only_when_something_was_displaced() {
+    let hypr = FakeHypr::default();
+    let mut hotkeys = hotkeys();
+    hotkeys.set_override(true);
+    hotkeys
+        .sync(&hypr, &[wanted("SUPER + J", "init.lua:1")])
+        .await;
+    assert!(!hotkeys.set_override(false), "nothing was displaced");
+
+    hypr.add("SUPER + K", "Theirs");
+    hotkeys.set_override(true);
+    hotkeys
+        .sync(
+            &hypr,
+            &[
+                wanted("SUPER + J", "init.lua:1"),
+                wanted("SUPER + K", "init.lua:2"),
+            ],
+        )
+        .await;
+    assert_eq!(hotkeys.displaced().len(), 1);
+    assert!(hotkeys.set_override(false));
+    assert!(hotkeys.displaced().is_empty());
+
+    // Shutdown with a displaced bind asks for the reload too.
+    hotkeys.set_override(true);
+    hypr.add("SUPER + K", "Theirs");
+    hotkeys
+        .sync(&hypr, &[wanted("SUPER + K", "init.lua:2")])
+        .await;
+    assert!(hotkeys.clear(&hypr).await);
+    assert!(hypr.chords().is_empty());
 }
 
 #[tokio::test]

@@ -23,7 +23,12 @@ async fn named_trigger_runs_its_handler() {
         [TriggerRow {
             id: "greet".into(),
             kind: "trigger".into(),
-            origin: "init.lua:1".into()
+            detail: String::new(),
+            origin: "init.lua:1".into(),
+            enabled: true,
+            problem: None,
+            overrides: None,
+            bound: None,
         }]
     );
     assert_eq!(h.status().await.triggers, 1);

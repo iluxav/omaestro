@@ -37,6 +37,13 @@ impl Injector for Keys {
         Box::pin(ctl::press(chord))
     }
 
+    fn erase(&self, count: usize) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            let keys: Vec<KeyPress> = (0..count).map(|_| ("", "BackSpace".to_string())).collect();
+            ctl::press_keys(&keys).await
+        })
+    }
+
     fn type_text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             for run in runs(text) {

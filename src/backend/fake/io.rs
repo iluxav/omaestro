@@ -4,8 +4,8 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use super::Journal;
 use crate::backend::{
-    BackendError, BoxFuture, ChatRequest, ClipContent, Clipboard, Injector, Llm, Result, Shell,
-    ShellOutput,
+    BackendError, BoxFuture, ChatRequest, ClipContent, Clipboard, Http, HttpRequest, HttpResponse,
+    Injector, Keyboards, Llm, Result, Shell, ShellOutput, System, SystemSource, Watching,
 };
 use crate::chord::Chord;
 
@@ -76,6 +76,14 @@ impl Clipboard for FakeClipboard {
             Ok(())
         })
     }
+
+    fn watch(
+        &self,
+        _: tokio::sync::mpsc::Sender<crate::runtime::Event>,
+    ) -> std::result::Result<Watching, String> {
+        self.journal.push("watch clipboard".to_string());
+        Ok(Watching::new(()))
+    }
 }
 
 #[derive(Default)]
@@ -100,6 +108,13 @@ impl Injector for FakeInjector {
     fn type_text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             self.journal.push(format!("type {text:?}"));
+            Ok(())
+        })
+    }
+
+    fn erase(&self, count: usize) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            self.journal.push(format!("erase {count}"));
             Ok(())
         })
     }
@@ -193,10 +208,72 @@ impl FakeShell {
     }
 }
 
-impl Shell for FakeShell {
-    fn run<'a>(&'a self, command: &'a str) -> BoxFuture<'a, Result<ShellOutput>> {
+/// Answers requests from a queue and records them.
+#[derive(Default)]
+pub struct FakeHttp {
+    requests: Mutex<Vec<HttpRequest>>,
+    answers: Mutex<std::collections::VecDeque<std::result::Result<HttpResponse, String>>>,
+}
+
+impl FakeHttp {
+    pub fn answer(&self, response: HttpResponse) {
+        self.answers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(Ok(response));
+    }
+
+    pub fn fail(&self, message: &str) {
+        self.answers
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push_back(Err(message.to_string()));
+    }
+
+    pub fn requests(&self) -> Vec<HttpRequest> {
+        self.requests
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+}
+
+impl Http for FakeHttp {
+    fn request<'a>(&'a self, request: &'a HttpRequest) -> BoxFuture<'a, Result<HttpResponse>> {
         Box::pin(async move {
-            self.journal.push(format!("sh {command}"));
+            self.requests
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(request.clone());
+            let answer = self
+                .answers
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .pop_front();
+            match answer {
+                Some(Ok(response)) => Ok(response),
+                Some(Err(message)) => Err(BackendError::Other(message)),
+                None => Ok(HttpResponse {
+                    status: 200,
+                    ..HttpResponse::default()
+                }),
+            }
+        })
+    }
+}
+
+impl Shell for FakeShell {
+    fn run<'a>(
+        &'a self,
+        command: &'a str,
+        stdin: Option<&'a str>,
+        _timeout: Option<std::time::Duration>,
+    ) -> BoxFuture<'a, Result<ShellOutput>> {
+        Box::pin(async move {
+            match stdin {
+                Some(input) => self.journal.push(format!("sh {command} <<< {input:?}")),
+                None => self.journal.push(format!("sh {command}")),
+            }
             let answer = self
                 .answers
                 .lock()
@@ -207,5 +284,61 @@ impl Shell for FakeShell {
                 ..ShellOutput::default()
             }))
         })
+    }
+
+    fn spawn<'a>(&'a self, command: &'a str) -> BoxFuture<'a, Result<u32>> {
+        Box::pin(async move {
+            self.journal.push(format!("spawn {command}"));
+            Ok(4242)
+        })
+    }
+}
+
+/// Records that keyboards were watched; the test feeds keys itself.
+pub struct FakeKeyboards {
+    journal: Journal,
+}
+
+impl FakeKeyboards {
+    pub fn new(journal: Journal) -> Self {
+        Self { journal }
+    }
+}
+
+impl Keyboards for FakeKeyboards {
+    fn watch(
+        &self,
+        _: tokio::sync::mpsc::Sender<crate::runtime::Event>,
+    ) -> std::result::Result<Watching, String> {
+        self.journal.push("watch keyboards".to_string());
+        Ok(Watching::new(()))
+    }
+}
+
+/// Records which system sources were watched; the test feeds the events.
+pub struct FakeSystem {
+    journal: Journal,
+}
+
+impl FakeSystem {
+    pub fn new(journal: Journal) -> Self {
+        Self { journal }
+    }
+}
+
+impl System for FakeSystem {
+    fn watch(
+        &self,
+        source: SystemSource,
+        _: tokio::sync::mpsc::Sender<crate::runtime::Event>,
+    ) -> std::result::Result<Watching, String> {
+        let name = match source {
+            SystemSource::Login1 => "login1",
+            SystemSource::Usb => "usb",
+            SystemSource::Battery => "battery",
+            SystemSource::Network => "network",
+        };
+        self.journal.push(format!("watch {name}"));
+        Ok(Watching::new(()))
     }
 }

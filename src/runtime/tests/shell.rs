@@ -165,3 +165,59 @@ async fn bad_intervals_fail_at_the_rule_line() {
         ["init.lua:2: om.every: 'soon': a number must come before 's' (no rules loaded)"]
     );
 }
+
+#[tokio::test]
+async fn shell_options_feed_stdin_and_report_timeouts() {
+    let h = Harness::start(&[]).await;
+    h.fakes.shell.answer("3\n");
+    assert_eq!(
+        h.eval("return om.shell('wc -l', {stdin = 'a\\nb\\nc\\n'})")
+            .await
+            .unwrap(),
+        ["3"]
+    );
+    assert_eq!(h.fakes.journal.entries(), ["sh wc -l <<< \"a\\nb\\nc\\n\""]);
+    h.fakes.shell.fail(None, "timed out after 2s");
+    assert_eq!(
+        h.eval("local out = om.shell('sleep 9', {timeout = 2}) return out")
+            .await
+            .unwrap_err(),
+        "eval:1: `sleep 9` timed out after 2s"
+    );
+}
+
+#[tokio::test]
+async fn choose_passes_options_by_arguments_or_stdin() {
+    let config = "choose_command = \"pick {label} {options}\"\n";
+    let h = Harness::start(&[("omaestro.toml", config)]).await;
+    h.fakes.shell.answer("png\n");
+    assert_eq!(
+        h.eval("return om.choose('Format', {'jpg', 'png'})")
+            .await
+            .unwrap(),
+        ["png"]
+    );
+    assert_eq!(h.fakes.journal.entries(), ["sh pick 'Format' 'jpg' 'png'"]);
+    assert_eq!(
+        h.eval("return om.choose('Format', {})").await.unwrap(),
+        ["nil"]
+    );
+
+    assert!(
+        h.save(&[("omaestro.toml", "choose_command = \"menu -p {label}\"\n")])
+            .await
+            .ok
+    );
+    h.fakes.journal.clear();
+    h.fakes.shell.fail(Some(1), "");
+    assert_eq!(
+        h.eval("return om.choose('Pick', {'a', 'b'})")
+            .await
+            .unwrap(),
+        ["nil"]
+    );
+    assert_eq!(
+        h.fakes.journal.entries(),
+        ["sh menu -p 'Pick' <<< \"a\\nb\\n\""]
+    );
+}

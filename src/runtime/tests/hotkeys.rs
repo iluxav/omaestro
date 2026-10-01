@@ -26,7 +26,12 @@ async fn hotkey_is_bound_in_hyprland_and_fires_its_handler() {
         [TriggerRow {
             id: "hotkey:SUPER+J".into(),
             kind: "hotkey".into(),
-            origin: "init.lua:1".into()
+            detail: "SUPER + J".into(),
+            origin: "init.lua:1".into(),
+            enabled: true,
+            problem: None,
+            overrides: None,
+            bound: Some(true),
         }]
     );
 
@@ -80,11 +85,11 @@ async fn chord_the_user_already_bound_is_refused() {
         h.errors(),
         [
             "rules.d/keys.lua:1: SUPER + J is already bound in Hyprland (Toggle window split); \
-          remove that bind or pick another chord"
+          remove that bind, pick another chord, or `om override on`"
         ]
     );
     // The user's bind is untouched, the other hotkey works, and the refused
-    // one is not listed as if it did.
+    // one stays listed with the reason it has no bind.
     assert_eq!(h.fakes.hypr.chords(), ["SUPER + J", "SUPER + K"]);
     assert!(
         !h.fakes
@@ -93,9 +98,27 @@ async fn chord_the_user_already_bound_is_refused() {
             .iter()
             .any(|e| e.starts_with("unbind"))
     );
-    assert!(!h.trigger("hotkey:SUPER+J").await.ok);
     assert!(h.trigger("hotkey:SUPER+K").await.ok);
-    assert_eq!(h.status().await.triggers, 1);
+    assert_eq!(h.status().await.triggers, 2);
+    let rows: Vec<TriggerRow> =
+        serde_json::from_value(h.ask(Request::List).await.data.unwrap()).unwrap();
+    let problems: Vec<(&str, Option<&str>)> = rows
+        .iter()
+        .map(|r| (r.id.as_str(), r.problem.as_deref()))
+        .collect();
+    assert_eq!(
+        problems,
+        [
+            (
+                "hotkey:SUPER+J",
+                Some(
+                    "SUPER + J is already bound in Hyprland (Toggle window split); \
+                     remove that bind, pick another chord, or `om override on`"
+                )
+            ),
+            ("hotkey:SUPER+K", None),
+        ]
+    );
 }
 
 #[tokio::test]

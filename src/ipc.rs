@@ -21,8 +21,23 @@ pub enum Request {
     Status,
     List,
     Reload,
-    Trigger { id: String },
-    Eval { chunk: String },
+    Trigger {
+        id: String,
+    },
+    Eval {
+        chunk: String,
+    },
+    /// Switch a trigger on or off; the choice outlives reloads and restarts.
+    Enable {
+        id: String,
+    },
+    Disable {
+        id: String,
+    },
+    /// Whether rules may take chords Hyprland already has. Kept too.
+    Override {
+        on: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -45,6 +60,11 @@ pub struct Status {
     /// Rule files of the running state, in load order.
     pub files: Vec<String>,
     pub triggers: usize,
+    /// Of `triggers`, how many are switched off.
+    pub disabled: usize,
+    /// `om override on`: rules take chords Hyprland already has.
+    #[serde(rename = "override")]
+    pub override_binds: bool,
     /// Handlers in flight.
     pub running: usize,
     pub reload_pending: bool,
@@ -57,7 +77,21 @@ pub struct Status {
 pub struct TriggerRow {
     pub id: String,
     pub kind: String,
+    /// The chord, matcher, interval, time, text or path the rule gave.
+    pub detail: String,
     pub origin: String,
+    pub enabled: bool,
+    /// Why a hotkey has no bind right now: a chord somebody else holds, or
+    /// a key Hyprland refused.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<String>,
+    /// The bind this hotkey displaced (`om override on`), by its description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overrides: Option<String>,
+    /// For hotkeys and modes: whether the bind is in Hyprland right now (an
+    /// app hotkey's comes and goes with the focus).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bound: Option<bool>,
 }
 
 impl Response {

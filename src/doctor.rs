@@ -88,12 +88,20 @@ pub async fn run(socket: &Path, clear: bool) -> bool {
     healthy
 }
 
-/// The chords of the daemon's hotkeys, from `om list`.
+/// The chords of the daemon's hotkeys, from `om list`. A hotkey that is
+/// switched off or refused holds no bind, so it is not counted; an app
+/// hotkey's bind comes and goes with the focus, so it is.
 fn hotkey_chords(rows: &[TriggerRow]) -> Vec<Chord> {
     rows.iter()
-        .filter(|row| row.kind == "hotkey")
-        .filter_map(|row| row.id.strip_prefix("hotkey:"))
-        .filter_map(|chord| Chord::parse(chord).ok())
+        .filter(|row| {
+            (row.kind == "hotkey" || row.kind == "app_hotkey")
+                && row.enabled
+                && row.problem.is_none()
+        })
+        .filter_map(|row| {
+            let chord = row.detail.split(" in ").next().unwrap_or(&row.detail);
+            Chord::parse(chord).ok()
+        })
         .collect()
 }
 
@@ -137,7 +145,7 @@ async fn check_binds(hypr: &dyn Hypr, live: &[Chord], clear: bool) {
                 "warn  leftover bind {chord} ({description}) shares its chord with a bind that is not ours; left alone"
             );
         } else {
-            match hypr.unbind(chord).await {
+            match hypr.unbind(chord, "").await {
                 Ok(()) => println!("ok    removed leftover bind {chord} ({description})"),
                 Err(err) => println!("warn  could not remove leftover bind {chord}: {err}"),
             }
@@ -162,7 +170,12 @@ mod tests {
         TriggerRow {
             id: id.to_string(),
             kind: kind.to_string(),
+            detail: id.split_once(':').map(|(_, d)| d).unwrap_or("").to_string(),
             origin: "init.lua:1".to_string(),
+            enabled: true,
+            problem: None,
+            overrides: None,
+            bound: None,
         }
     }
 

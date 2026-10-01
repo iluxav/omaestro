@@ -70,19 +70,6 @@ async fn trigger_arguments_are_checked() {
 }
 
 #[tokio::test]
-async fn on_typed_is_a_stub_in_v1() {
-    let h = Harness::start(&[]).await;
-    let error = h
-        .eval("om.on_typed(':sig', function() end)")
-        .await
-        .unwrap_err();
-    assert_eq!(
-        error,
-        "eval:1: om.on_typed is not available in v1: typed triggers arrive in v2"
-    );
-}
-
-#[tokio::test]
 async fn prelude_string_helpers() {
     let h = Harness::start(&[]).await;
     assert_eq!(

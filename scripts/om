@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# The om command for the plugin's panel (Panel.qml), with the arguments
+# passed through. The binary is OMAESTRO_BIN when set, else `om` on PATH,
+# else the release binary scripts/plugin-start.sh downloaded.
+
+set -euo pipefail
+
+here="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [[ -n "${OMAESTRO_BIN:-}" ]]; then
+  bin="$OMAESTRO_BIN"
+elif command -v om >/dev/null 2>&1; then
+  bin="$(command -v om)"
+else
+  version="$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$here/manifest.json" | head -1)"
+  bin="$HOME/.local/share/omaestro/om-$version-$(uname -m)"
+fi
+
+if [[ ! -x "$bin" ]]; then
+  echo "omaestro: no om binary at $bin (has the plugin's service started once?)" >&2
+  exit 127
+fi
+
+exec "$bin" "$@"

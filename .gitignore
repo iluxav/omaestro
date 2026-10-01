@@ -1,3 +1,7 @@
+# Build output (cargo) and release binaries (scripts/release.sh).
 /target
-CHANGELOG.md
-AGENTS.md
+/dist
+
+# Private notes: every Markdown file except the README stays out of the repo.
+*.md
+!README.md

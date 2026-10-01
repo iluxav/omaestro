@@ -16,6 +16,9 @@
 # M0: status, eval, hot reload, named triggers, rule errors, systemd unit.
 # M1: hotkeys (bind, conflict, press, Hyprland reload, rule reload, exit),
 #     selection, paste with clipboard restore, the model.
+# Later: windows, events, apps, modes, timers, watchers, enable/disable, and
+#     the plugin's panel loaded in quickshell (SMOKE_SHOTS=<dir> also saves
+#     screenshots of it there).
 
 set -u
 
@@ -62,6 +65,7 @@ daemon_pid=""
 monitor_pid=""
 nested_pid=""
 scratch_pid=""
+qs_pid=""
 SIG=""
 WL=""
 
@@ -76,6 +80,7 @@ SESSION_ENV_BEFORE="$(session_env)"
 cleanup() {
   [[ -n "$daemon_pid" ]] && kill "$daemon_pid" 2>/dev/null
   [[ -n "$scratch_pid" ]] && kill "$scratch_pid" 2>/dev/null
+  [[ -n "$qs_pid" ]] && kill "$qs_pid" 2>/dev/null
   [[ -n "$monitor_pid" ]] && kill "$monitor_pid" 2>/dev/null
   if [[ -n "$nested_pid" ]]; then
     kill "$nested_pid" 2>/dev/null
@@ -141,6 +146,12 @@ status_has() { "$OM" status | grep -qF "$1"; }
 
 # Runs a command against the nested compositor, never the real one.
 in_nested() { WAYLAND_DISPLAY="$WL" HYPRLAND_INSTANCE_SIGNATURE="$SIG" "$@"; }
+# Starts a scratch window in the nested compositor; `env`, not the function,
+# so $scratch_pid is the terminal itself and killing it closes the window.
+scratch() {
+  env WAYLAND_DISPLAY="$WL" HYPRLAND_INSTANCE_SIGNATURE="$SIG" "$@" >/dev/null 2>&1 &
+  scratch_pid=$!
+}
 # Descriptions of the nested instance's binds, one per line.
 nested_binds() {
   in_nested hyprctl -j binds | python3 -c 'import json, sys
@@ -151,8 +162,9 @@ nested_lacks_bind() { ! nested_binds | grep -qF "$1"; }
 our_binds() { nested_binds | grep -c '^omaestro: '; }
 
 start_daemon() {
-  # `env`, not the in_nested function: $! has to be the daemon itself.
-  env WAYLAND_DISPLAY="$WL" HYPRLAND_INSTANCE_SIGNATURE="$SIG" \
+  # `env`, not the in_nested function: $! has to be the daemon itself. Its
+  # state (om.store, the disabled list) stays under $TMP, not in yours.
+  env WAYLAND_DISPLAY="$WL" HYPRLAND_INSTANCE_SIGNATURE="$SIG" XDG_STATE_HOME="$TMP/state" \
     "$OM" daemon --foreground --config-dir "$CFG" >>"$LOG" 2>&1 &
   daemon_pid=$!
   wait_for "daemon answers status" "$OM" status
@@ -209,6 +221,8 @@ check "the systemd session environment is untouched" test "$(session_env)" = "$S
 echo "# daemon on $CFG"
 start_daemon || { cat "$LOG"; exit 1; }
 expect "eval 'return 1+1' prints 2" "2" "$OM" eval 'return 1+1'
+expect "om repl answers a line" "om> 3
+om> " sh -c "printf 'return 1+2\\n' | $OM repl"
 
 echo "# hot reload"
 cat >"$CFG/init.lua" <<'EOF'
@@ -253,10 +267,29 @@ wait_for "a chord the user already bound is refused, with the reason" \
 expect "only the two free chords were bound" "2" our_binds
 check "the user's bind is still there" nested_has_bind "smoke: the user's bind"
 
+echo "# override: who wins a chord"
+expect "om status says override is off" "override:  off (Hyprland's own binds win)" sh -c "'$OM' status | grep '^override'"
+expect "om override alone says the same" "off (Hyprland's own binds win)" "$OM" override
+check "om list names the refused chord" sh -c "'$OM' list | grep -q 'refused: SUPER + Q is already bound'"
+expect "om override on takes the chord" "override on; 1 chord(s) taken from other binds" "$OM" override on
+wait_for "our bind replaced the user's" nested_has_bind "omaestro: init.lua:7"
+check "and the user's bind is gone for now" nested_lacks_bind "smoke: the user's bind"
+wait_for "the user was told" notified "SUPER + Q now runs init.lua:7 instead of smoke: the user's bind"
+check "om list shows what it overrides" sh -c "'$OM' list | grep -q 'overrides: smoke: the user'"
+expect "and om override alone says on" "on (rules take chords Hyprland already has)" "$OM" override
+in_nested hyprctl reload >/dev/null
+sleep 0.5
+wait_for "a Hyprland reload does not give it back while override is on" nested_has_bind "omaestro: init.lua:7"
+check "the user's bind stays out" nested_lacks_bind "smoke: the user's bind"
+expect "om override off" "override off; rules give way to Hyprland's own binds" "$OM" override off
+wait_for "the user's bind is back (Hyprland reloaded its config)" nested_has_bind "smoke: the user's bind"
+wait_for "and ours on that chord is gone" nested_lacks_bind "omaestro: init.lua:7"
+two_binds() { [[ "$(our_binds)" == "2" ]]; }
+wait_for "the other hotkeys came back with it" two_binds
+
 echo "# selection and paste, in a scratch window"
 # The window writes the first line it receives to a file.
-in_nested "$TERMINAL" sh -c "head -n 1 > '$TMP/pasted.txt'" >/dev/null 2>&1 &
-scratch_pid=$!
+scratch "$TERMINAL" sh -c "head -n 1 > '$TMP/pasted.txt'"
 scratch_focused() { in_nested hyprctl -j activewindow | grep -qi "\"class\": \"$TERMINAL\""; }
 wait_for "the scratch window has focus" scratch_focused
 # wl-copy stays behind to serve the text; silence it for when the nested
@@ -295,6 +328,125 @@ EOF
 wait_for "a hotkey removed from the rules is unbound" nested_lacks_bind "omaestro: init.lua:4"
 expect "the one still in the rules stays bound" "1" our_binds
 
+echo "# enable and disable (what the panel does)"
+list_json_ok() {
+  "$OM" list --json | python3 -c 'import json, sys
+rows = json.load(sys.stdin)
+assert [r["id"] for r in rows] == ["hotkey:SUPER+ALT+J"], rows
+assert rows[0]["enabled"] and rows[0]["detail"] == "SUPER + ALT + J", rows'
+}
+check "om list --json describes the hotkey" list_json_ok
+expect "om disable answers" "disabled hotkey:SUPER+ALT+J" "$OM" disable 'hotkey:SUPER+ALT+J'
+wait_for "a disabled hotkey is unbound" nested_lacks_bind "omaestro: init.lua:1"
+check "om list marks it" sh -c "'$OM' list | grep -q '(disabled)'"
+check "om status counts it" status_has "1 (1 disabled)"
+check "firing it is refused with a hint" sh -c "'$OM' trigger 'hotkey:SUPER+ALT+J' 2>&1 | grep -q 'switched off'"
+expect "the choice is on disk" '["hotkey:SUPER+ALT+J"]' python3 -c "import json; print(json.dumps(json.load(open('$TMP/state/omaestro/settings.json'))['disabled']))"
+stop_daemon
+start_daemon
+check "and holds across a restart" sh -c "'$OM' list | grep -q '(disabled)'"
+expect "om enable answers" "enabled hotkey:SUPER+ALT+J" "$OM" enable 'hotkey:SUPER+ALT+J'
+wait_for "an enabled hotkey is bound again" nested_has_bind "omaestro: init.lua:1"
+expect "an unknown id is refused" "om: no trigger named 'nope'" "$OM" disable nope
+expect "scripts/om (the panel's launcher) reaches the daemon" "$("$OM" list)" env OMAESTRO_BIN="$OM" scripts/om list
+
+echo "# the panel (Panel.qml in quickshell, in the nested Hyprland)"
+# A global hotkey and an app-scoped one, so both kinds of row show.
+cat >"$CFG/init.lua" <<'EOF'
+om.hotkey("SUPER + ALT + J", function() end)
+om.app_hotkey("^smoke%-panel$", "CTRL + S", function() end)
+EOF
+wait_for "the panel's rules loaded" status_has "triggers:  2"
+# The Omarchy shell's own Commons and Ui modules, borrowed read-only; the
+# panel is driven through quickshell's IPC the way a click would.
+SHELL_SRC="${OMARCHY_PATH:-/usr/share/omarchy}/shell"
+if command -v qs >/dev/null && [[ -d "$SHELL_SRC/Ui" && -d "$SHELL_SRC/Commons" ]]; then
+  mkdir -p "$TMP/qs"
+  ln -s "$SHELL_SRC/Commons" "$TMP/qs/Commons"
+  ln -s "$SHELL_SRC/Ui" "$TMP/qs/Ui"
+  cat >"$TMP/qs/shell.qml" <<EOF
+import QtQuick
+import Quickshell
+import Quickshell.Io
+ShellRoot {
+  Loader {
+    id: panel
+    source: "file://$PWD/Panel.qml"
+    onLoaded: item.open("{}")
+  }
+  IpcHandler {
+    target: "smoke"
+    function rules(): string {
+      return panel.item.shownRules.map(function(r) { return r.id + "=" + r.enabled }).join(",")
+    }
+    function toggle(id: string): void {
+      var rule = panel.item.rules.find(function(r) { return r.id === id })
+      panel.item.setEnabled(id, !rule.enabled)
+    }
+    function reload(): void { panel.item.reload() }
+    function message(): string { return panel.item.message }
+    function error(): string { return panel.item.error }
+    function setOverride(on: bool): void { panel.item.setOverride(on) }
+    function override(): bool { return panel.item.overrideOn }
+    function askOverride(): void { panel.item.askOverride() }
+    function cancelOverride(): void { panel.item.cancelOverride() }
+  }
+}
+EOF
+  env WAYLAND_DISPLAY="$WL" HYPRLAND_INSTANCE_SIGNATURE="$SIG" OMAESTRO_BIN="$OM" \
+    qs -p "$TMP/qs" >"$TMP/qs.log" 2>&1 &
+  qs_pid=$!
+  panel_ipc() { in_nested qs ipc -p "$TMP/qs" call smoke "$@" 2>/dev/null; }
+  panel_rules() { [[ "$(panel_ipc rules)" == "$1" ]]; }
+  shown=0
+  for _ in $(seq 150); do panel_rules "app_hotkey:CTRL+S:class=^smoke%-panel$=true,hotkey:SUPER+ALT+J=true" && { shown=1; break; }; sleep 0.1; done
+  if [[ "$shown" == 1 ]]; then
+    pass "the panel loads with the shell's components and lists the hotkey"
+    if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+      mkdir -p "$SMOKE_SHOTS"
+      in_nested grim "$SMOKE_SHOTS/panel-on.png" && echo "      screenshot: $SMOKE_SHOTS/panel-on.png"
+    fi
+    panel_ipc toggle 'hotkey:SUPER+ALT+J' >/dev/null
+    wait_for "its switch runs om disable" nested_lacks_bind "omaestro: init.lua:1"
+    wait_for "and the panel shows the rule as off" panel_rules "app_hotkey:CTRL+S:class=^smoke%-panel$=true,hotkey:SUPER+ALT+J=false"
+    if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+      in_nested grim "$SMOKE_SHOTS/panel-off.png" && echo "      screenshot: $SMOKE_SHOTS/panel-off.png"
+    fi
+    panel_ipc toggle 'hotkey:SUPER+ALT+J' >/dev/null
+    wait_for "switching it back on binds the hotkey again" nested_has_bind "omaestro: init.lua:1"
+    wait_for "and the panel agrees" panel_rules "app_hotkey:CTRL+S:class=^smoke%-panel$=true,hotkey:SUPER+ALT+J=true"
+    panel_ipc reload >/dev/null
+    reload_shown() { [[ "$(panel_ipc message)" == "reloaded 1 file(s)" ]]; }
+    wait_for "the reload button reloads and shows the daemon's answer" reload_shown
+    expect "no error is shown" "" panel_ipc error
+    if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+      # The warning that the override switch shows first.
+      panel_ipc askOverride >/dev/null
+      sleep 0.5
+      in_nested grim "$SMOKE_SHOTS/panel-override-warning.png" && echo "      screenshot: $SMOKE_SHOTS/panel-override-warning.png"
+      panel_ipc cancelOverride >/dev/null
+    fi
+    panel_ipc setOverride true >/dev/null
+    override_is() { [[ "$(panel_ipc override)" == "$1" ]]; }
+    wait_for "the override switch turns it on" override_is true
+    if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+      sleep 0.5
+      in_nested grim "$SMOKE_SHOTS/panel-override-on.png" && echo "      screenshot: $SMOKE_SHOTS/panel-override-on.png"
+    fi
+    expect "and the daemon agrees" "override:  on (rules take chords Hyprland already has)" sh -c "'$OM' status | grep '^override'"
+    panel_ipc setOverride false >/dev/null
+    wait_for "and off again" override_is false
+  else
+    fail "the panel did not load (quickshell log follows)"
+    tail -n 30 "$TMP/qs.log"
+  fi
+  kill "$qs_pid" 2>/dev/null
+  wait "$qs_pid" 2>/dev/null
+  qs_pid=""
+else
+  skip "the panel (needs quickshell and the Omarchy shell sources)"
+fi
+
 echo "# focus, dispatch, type and key, in a scratch window"
 cat >"$CFG/init.lua" <<'RULES'
 om.on_focus({ class = "^smoke%-float$" }, function(win)
@@ -308,17 +460,85 @@ om.trigger("type", function()
   om.type("typed 2026-09-30 ünïcode")
   om.key("Return")
 end)
+om.app_hotkey("^smoke%-float$", "SUPER + ALT + K", function() end)
 RULES
-wait_for "the focus rules loaded" status_has "triggers:  3"
-in_nested "$TERMINAL" "$CLASS_FLAG" smoke-float sh -c "head -n 1 > '$TMP/typed.txt'" >/dev/null 2>&1 &
-scratch_pid=$!
+wait_for "the focus rules loaded" status_has "triggers:  4"
+check "an app hotkey is not bound while its window is absent" nested_lacks_bind "omaestro: init.lua:12"
+scratch "$TERMINAL" "$CLASS_FLAG" smoke-float sh -c "head -n 1 > '$TMP/typed.txt'"
 floating() { in_nested hyprctl -j activewindow | grep -q '"floating": true'; }
 wait_for "focusing the window ran its on_focus handler" notified "focused smoke-float"
 wait_for "which floated it with om.dispatch" floating
+wait_for "the app hotkey is bound while its window has focus" nested_has_bind "omaestro: init.lua:12"
 check "om trigger type" "$OM" trigger type
 typed() { [[ "$(cat "$TMP/typed.txt" 2>/dev/null)" == "typed 2026-09-30 ünïcode" ]]; }
 wait_for "om.type and om.key put a line into the window" typed
 wait_for "the window closing ran its on_blur handler" notified "blurred smoke-float"
+wait_for "and the app hotkey is unbound once it is gone" nested_lacks_bind "omaestro: init.lua:12"
+
+echo "# window objects"
+scratch "$TERMINAL" "$CLASS_FLAG" smoke-place sh -c "sleep 30"
+placed_focused() { in_nested hyprctl -j activewindow | grep -q '"class": "smoke-place"'; }
+wait_for "a scratch window has focus" placed_focused
+check "om.window():place('left') is accepted" "$OM" eval 'om.window():place("left")'
+left_half() {
+  in_nested hyprctl -j activewindow | python3 -c 'import json, sys
+w = json.load(sys.stdin)
+m = [m for m in json.load(open(sys.argv[1])) if m["id"] == w["monitor"]][0]
+usable_w = m["width"] // 2
+sys.exit(0 if w["floating"] and w["at"][0] == m["x"] and abs(w["size"][0] - usable_w) <= 2 else 1)' "$TMP/monitors.json"
+}
+in_nested hyprctl -j monitors >"$TMP/monitors.json"
+wait_for "the window floats on the left half of its monitor" left_half
+expect "om.windows() finds it by class" "smoke-place" "$OM" eval 'return om.windows({class = "^smoke%-place$"})[1].class'
+expect "om.monitor() names the nested output" "WAYLAND-1" "$OM" eval 'return om.monitor().name'
+check "to_workspace moves it away" "$OM" eval 'om.window():to_workspace(5)'
+on_workspace_5() { in_nested hyprctl -j clients | grep -q '"name": "5"'; }
+wait_for "and the window is on workspace 5" on_workspace_5
+kill "$scratch_pid" 2>/dev/null; scratch_pid=""
+
+echo "# open, title, close, workspace events"
+cat >"$CFG/init.lua" <<'RULES'
+om.hotkey("SUPER + ALT + J", function() end)
+om.on_open({ class = "^smoke%-events$" }, function(win) om.notify("omaestro smoke", "opened " .. win.class .. " on " .. win.workspace) end)
+om.on_title({ class = "^smoke%-events$", title = "^Renamed$" }, function(win) om.notify("omaestro smoke", "titled " .. win.title) end)
+om.on_close({ class = "^smoke%-events$" }, function(win) om.notify("omaestro smoke", "closed " .. win.class) end)
+om.on_workspace(function(ws) om.notify("omaestro smoke", "workspace " .. ws.name) end)
+RULES
+wait_for "the event rules loaded" status_has "triggers:  5"
+scratch "$TERMINAL" "$CLASS_FLAG" smoke-events sh -c "printf '\033]0;Renamed\007'; sleep 30"
+wait_for "a window opening ran on_open with its workspace" notified "opened smoke-events on"
+wait_for "its title change ran on_title" notified "titled Renamed"
+in_nested hyprctl dispatch 'hl.dsp.focus({ workspace = "7" })' >/dev/null
+wait_for "switching workspaces ran on_workspace" notified "workspace 7"
+kill "$scratch_pid" 2>/dev/null; scratch_pid=""
+wait_for "the window closing ran on_close with its class" notified "closed smoke-events"
+
+echo "# apps"
+expect "om.focus launches an app through Hyprland and waits for its window" "smoke-app" \
+  "$OM" eval "local w = om.focus('^smoke%-app$', '$TERMINAL $CLASS_FLAG smoke-app sh -c \"sleep 30\"') return w and w.class"
+app_focused() { in_nested hyprctl -j activewindow | grep -q '"class": "smoke-app"'; }
+wait_for "and it has focus" app_focused
+expect "om.apps() lists it" "1" "$OM" eval 'for _, a in ipairs(om.apps()) do if a.class == "smoke-app" then return a.count end end return 0'
+check "the window closes through its object" "$OM" eval 'om.windows({class = "^smoke%-app$"})[1]:close()'
+app_gone() { ! in_nested hyprctl -j clients | grep -q '"class": "smoke-app"'; }
+wait_for "and is gone" app_gone
+
+echo "# modes"
+cat >"$CFG/init.lua" <<'RULES'
+om.hotkey("SUPER + ALT + J", function() end)
+om.mode("SUPER + ALT + W", { h = function() om.notify("omaestro smoke", "mode key h") end }, { hint = "smoke mode hint" })
+RULES
+wait_for "the mode's entry bind is there" nested_has_bind "omaestro: init.lua:2"
+in_submap() { in_nested hyprctl -j binds | python3 -c 'import json, sys
+sys.exit(0 if any(b.get("submap") == sys.argv[1] and b.get("key", "").upper() == sys.argv[2] for b in json.load(sys.stdin)) else 1)' "$1" "$2"; }
+wait_for "its keys live in the submap" in_submap "om-super+alt+w" "H"
+check "and Escape leaves it" in_submap "om-super+alt+w" "ESCAPE"
+in_nested hyprctl dispatch 'hl.dsp.submap("om-super+alt+w")' >/dev/null
+wait_for "entering the mode shows the hint" notified "smoke mode hint"
+expect "Hyprland is in the mode" "om-super+alt+w" in_nested hyprctl repl 'return hl.get_current_submap()'
+check "a mode key fires its trigger" "$OM" trigger 'mode:SUPER+ALT+W/H'
+wait_for "and runs its handler" notified "mode key h"
+in_nested hyprctl dispatch 'hl.dsp.submap("reset")' >/dev/null
 
 echo "# timers, shell, clipboard, prompt"
 cat >"$CFG/init.lua" <<'RULES'
@@ -327,6 +547,15 @@ om.every("1s", function() om.notify("omaestro smoke", "tick") end)
 RULES
 printf 'prompt_command = "printf typed-%%s {label}"\n' >"$CFG/omaestro.toml"
 wait_for "a timer ticks" notified "tick"
+check "om.after schedules a one-shot" "$OM" eval 'om.after("1s", function() om.notify("omaestro smoke", "after fired") end)'
+wait_for "which fires" notified "after fired"
+printf 'prompt_command = "printf typed-%%s {label}"\nchoose_command = "printf %%s {options} | head -c 1"\n' >"$CFG/omaestro.toml"
+sleep 0.6
+expect "om.choose runs choose_command with the options as arguments" "b" "$OM" eval 'return om.choose("Pick", {"b", "c"})'
+expect "om.store keeps a value across a reload" "7" "$OM" eval 'om.store.set("smoke", 7) return om.store.get("smoke")'
+"$OM" reload >/dev/null
+expect "and after it" "7" "$OM" eval 'return om.store.get("smoke")'
+"$OM" eval 'om.store.set("smoke", nil)' >/dev/null
 expect "om.shell returns the command's output" "shell-ok" "$OM" eval 'return om.shell("echo shell-ok")'
 expect "om.set_clipboard and om.clipboard round-trip" "clip-ok" "$OM" eval 'om.set_clipboard("clip-ok") return om.clipboard()'
 expect "om.prompt runs prompt_command with the label" "typed-hello" "$OM" eval 'return om.prompt("hello")'
@@ -344,6 +573,104 @@ expect "om doctor --clear removes it" "0" our_binds
 check "the user's bind is still there" nested_has_bind "smoke: the user's bind"
 start_daemon
 wait_for "the restarted daemon binds again" nested_has_bind "omaestro: init.lua:1"
+
+echo "# http and spawn"
+python3 -u -m http.server --bind 127.0.0.1 0 --directory "$TMP" >"$TMP/httpd.log" 2>&1 &
+httpd_pid=$!
+echo "served" >"$TMP/served.txt"
+port=""
+for _ in $(seq 50); do
+  port=$(grep -oE "port [0-9]+" "$TMP/httpd.log" | head -1 | awk '{print $2}')
+  [[ -n "$port" ]] && break
+  sleep 0.1
+done
+if [[ -n "$port" ]]; then
+  expect "om.http fetches a local file" "served" "$OM" eval "return om.http('http://127.0.0.1:$port/served.txt').body:trim()"
+else
+  fail "om.http (no local http server came up)"
+fi
+kill "$httpd_pid" 2>/dev/null
+check "om.spawn starts a command in the background" "$OM" eval "om.spawn('touch $TMP/spawned')"
+spawned() { test -e "$TMP/spawned"; }
+wait_for "which ran" spawned
+
+echo "# clipboard and file watchers, layout"
+cat >"$CFG/init.lua" <<'RULES'
+om.hotkey("SUPER + ALT + J", function() end)
+om.on_clipboard(function(text) om.notify("omaestro smoke", "clipboard now " .. text) end)
+RULES
+printf 'om.on_file("%s", function(c) om.notify("omaestro smoke", "file " .. c.kind .. " " .. c.path) end)\n' "$TMP/watched" >"$CFG/rules.d/watch.lua"
+mkdir -p "$TMP/watched"
+wait_for "the watcher rules loaded" status_has "triggers:  3"
+printf 'smoke clip' | in_nested wl-copy 2>/dev/null
+wait_for "a clipboard change reaches on_clipboard with the text" notified "clipboard now smoke clip"
+echo x >"$TMP/watched/new.txt"
+wait_for "a new file reaches on_file" notified "file create $TMP/watched/new.txt"
+rm "$CFG/rules.d/watch.lua"
+scratch "$TERMINAL" "$CLASS_FLAG" smoke-layout sh -c "sleep 30"
+layout_focused() { in_nested hyprctl -j activewindow | grep -q '"class": "smoke-layout"'; }
+wait_for "a scratch window for the layout has focus" layout_focused
+expect "om.layout places it" "1" "$OM" eval 'return om.layout({ {class = "^smoke%-layout$", place = "right"} })'
+right_half() {
+  in_nested hyprctl -j activewindow | python3 -c 'import json, sys
+w = json.load(sys.stdin)
+m = [m for m in json.load(open(sys.argv[1])) if m["id"] == w["monitor"]][0]
+sys.exit(0 if w["floating"] and w["at"][0] >= m["x"] + m["width"] // 2 - 2 else 1)' "$TMP/monitors.json"
+}
+wait_for "on the right half" right_half
+kill "$scratch_pid" 2>/dev/null; scratch_pid=""
+
+echo "# typed triggers"
+if id -nG | tr ' ' '\n' | grep -qx input; then
+  cat >"$CFG/rules.d/typed.lua" <<'RULES'
+om.on_typed(":smoke", function() om.notify("omaestro smoke", "typed trigger fired") end)
+RULES
+  wait_for "a typed rule loads without a permission error" status_has "rules.d/typed.lua"
+  skip "typing the text by hand (no way to synthesize keys without uinput)"
+  rm "$CFG/rules.d/typed.lua"
+else
+  skip "typed triggers: this user is not in the input group"
+fi
+
+echo "# plugins (om plugin: git repositories under lib/)"
+PLUG="$TMP/om-smoke-plugin"
+mkdir -p "$PLUG"
+(
+  cd "$PLUG" && git init --quiet &&
+    printf 'return { setup = function()\n  om.trigger("plugin-says", function() om.notify("omaestro smoke", "hello from the plugin") end)\nend }\n' >init.lua &&
+    git -c user.name=smoke -c user.email=smoke@test add -A &&
+    git -c user.name=smoke -c user.email=smoke@test commit --quiet -m first
+) >/dev/null 2>&1
+check "om plugin add clones a repository into lib/" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$PLUG" --no-rule
+check "om plugin list shows it with its Lua path" sh -c "OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin list | grep -q 'om-smoke-plugin .*lib/om-smoke-plugin/init.lua'"
+cat >"$CFG/init.lua" <<'EOF'
+om.use("om-smoke-plugin").setup()
+EOF
+wait_for "a rule loads it with om.use" status_has "triggers:  1"
+check "om trigger plugin-says" "$OM" trigger plugin-says
+wait_for "and the plugin's handler ran" notified "hello from the plugin"
+check "om plugin available lists the built-in ones" sh -c "OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin available | grep -q '^window-halves '"
+check "om plugin add <built-in> copies it out of the binary and writes its rule" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add window-halves
+check "the rule file is there" test -f "$CFG/rules.d/window-halves.lua"
+has_halves() { nested_binds | grep -qF "omaestro: lib/window-halves/init.lua"; }
+lacks_halves() { ! has_halves; }
+wait_for "its rule loads and its hotkeys bind, with lib/ origins" has_halves
+check "om plugin list knows it is built in" sh -c "OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin list | grep -q 'window-halves .*built-in'"
+check "om plugin remove drops it and its rule" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin remove window-halves
+check "the rule file went with it" test ! -e "$CFG/rules.d/window-halves.lua"
+wait_for "and its binds are gone" lacks_halves
+check "om plugin update pulls" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin update
+check "om plugin new makes a plugin skeleton" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin new smoke-mine --no-edit
+check "with an init.lua and a git repository" test -f "$CFG/lib/smoke-mine/init.lua" -a -d "$CFG/lib/smoke-mine/.git"
+check "which loads as a plugin" "$OM" eval 'return om.use("smoke-mine") ~= nil'
+check "om plugin remove refuses to drop uncommitted work" sh -c "! OMAESTRO_CONFIG_DIR='$CFG' '$OM' plugin remove smoke-mine 2>/dev/null"
+check "and removes it with --force" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin remove smoke-mine --force
+check "a clean clone goes without" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin remove om-smoke-plugin
+wait_for "the rule that used it now fails to load, with the reason" notified "module 'om-smoke-plugin' not found"
+# Leave a loadable file behind, or the next section's config change is
+# refused along with the broken rule.
+: >"$CFG/init.lua"
+wait_for "an init.lua without it loads again" status_has "triggers:  0"
 
 echo "# the model"
 printf '[model]\nendpoint = "http://127.0.0.1:9/api/chat"\n' >"$CFG/omaestro.toml"
@@ -371,8 +698,12 @@ else
 fi
 
 echo "# shutdown"
-stop_daemon
+check "om status names its supervisor: nothing, a script started it" status_has "under:     nothing"
+check "om stop stops a daemon nobody supervises" "$OM" stop
+wait "$daemon_pid" 2>/dev/null
+daemon_pid=""
 check "the socket is removed on exit" test ! -e "$OMAESTRO_SOCKET"
+check "om status then says it is not running, with a failure exit" sh -c "! '$OM' status >/dev/null 2>&1 && '$OM' status | grep -q 'daemon:    not running'"
 expect "our binds are removed on exit" "0" our_binds
 check "the user's bind is still there" nested_has_bind "smoke: the user's bind"
 
@@ -384,12 +715,23 @@ echo 'om.trigger("unit", function() end)' >"$TMP/unit-cfg/init.lua"
 sed "s|^ExecStart=.*|ExecStart=$OM --socket $OMAESTRO_SOCKET daemon --config-dir $TMP/unit-cfg|" \
   systemd/omaestro.service >"$UNIT_DIR/$UNIT"
 systemctl --user daemon-reload
-check "the unit starts" systemctl --user start "$UNIT"
+export OMAESTRO_UNIT="$UNIT"
+check "om status names the unit while nothing runs" sh -c "'$OM' status | grep -q 'unit:      $UNIT is inactive'"
+check "om start starts the unit" "$OM" start
 wait_for "the daemon answers under systemd (session environment present)" "$OM" status
 check "it runs in the real session, not the nested one" status_has "hyprland:  $REAL_SIG"
+check "om status names the unit as its supervisor" status_has "under:     the systemd user unit $UNIT"
 check "the unit is active" systemctl --user is-active "$UNIT"
-systemctl --user stop "$UNIT"
+check "om start again just says so" sh -c "'$OM' start | grep -q 'already running'"
+unit_pid() { "$OM" status --json 2>/dev/null | python3 -c 'import json, sys; print(json.load(sys.stdin)["pid"])' 2>/dev/null; }
+pid_before="$(unit_pid)"
+check "om restart restarts it" "$OM" restart
+pid_changed() { [[ -n "$(unit_pid)" && "$(unit_pid)" != "$pid_before" ]]; }
+wait_for "with a new pid" pid_changed
+check "om stop stops it" "$OM" stop
 check "the unit stops cleanly" test "$(systemctl --user show -p Result --value "$UNIT")" = success
+check "and nothing answers" sh -c "! '$OM' status >/dev/null 2>&1"
+unset OMAESTRO_UNIT
 
 echo "# afterwards"
 kill "$nested_pid" 2>/dev/null

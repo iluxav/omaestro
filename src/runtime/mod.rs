@@ -1,6 +1,7 @@
 //! The runtime: one event loop that owns the Lua state, receives events,
 //! dispatches them to Lua handlers and answers the control socket.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -11,26 +12,33 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 
 use crate::backend::Backends;
-use crate::backend::hypr::events::{Focused, HyprEvent};
+use crate::backend::hypr::events::{HyprEvent, WinRef};
 use crate::ipc::{Request, Response, Status};
 
 pub mod error;
+mod events;
+pub mod files;
 pub mod handler;
 pub mod host;
 pub mod hotkeys;
 pub mod registry;
 pub mod render;
+mod requests;
+mod settings;
 pub mod source;
 #[cfg(test)]
 mod tests;
 pub mod timers;
+pub mod typed;
 pub mod watch;
+mod watchers;
 
 use error::{describe, has_position};
 use handler::{HOTKEY_PRESSED, notify_error, run_handler};
 use host::LuaHost;
 use hotkeys::{Hotkeys, Wanted};
 use registry::{Trigger, TriggerKind};
+use settings::Settings;
 use source::Rules;
 use timers::Timers;
 
@@ -46,6 +54,20 @@ pub enum Event {
     Hypr(HyprEvent),
     /// A timer's interval passed; the trigger with this id is due.
     Timer(String),
+    /// A key the user typed (only sent while a rule watches typed text).
+    #[cfg_attr(not(feature = "typed"), allow(dead_code))]
+    Typed(typed::Key),
+    /// A keyboard came or went; the typed-text monitor should start over.
+    #[cfg_attr(not(feature = "typed"), allow(dead_code))]
+    TypedRescan,
+    /// The clipboard changed (only sent while a rule watches it).
+    ClipboardChanged,
+    /// The clipboard's text, read after a change.
+    ClipboardText(String),
+    /// Something under a watched path changed.
+    File(files::Change),
+    /// Sleep, wake, USB, battery, network.
+    System(crate::backend::SystemEvent),
     /// Hyprland closed its event socket: the session is over.
     HyprGone,
     Shutdown,
@@ -71,6 +93,8 @@ pub struct Info {
     pub hyprland_instance: String,
     /// The shell command that fires a trigger (see `hotkeys::trigger_command`).
     pub trigger_command: String,
+    /// Where `om.store` keeps its file.
+    pub state_dir: PathBuf,
 }
 
 pub struct Runtime {
@@ -86,10 +110,29 @@ pub struct Runtime {
     /// The hotkeys as of the last successful sync with Hyprland.
     synced_hotkeys: Vec<Wanted>,
     timers: Timers,
+    /// The recent keystrokes, while any rule watches typed text.
+    typed: typed::Typed,
+    /// The keyboards being read, while any rule watches typed text.
+    typed_watch: Option<crate::backend::Watching>,
+    /// The clipboard watch, while any rule watches it.
+    clip_watch: Option<crate::backend::Watching>,
+    clip_error_shown: bool,
+    files: files::Watches,
+    /// The system sources being watched, while rules listen to them.
+    system_watches: HashMap<crate::backend::SystemSource, crate::backend::Watching>,
+    /// So that a keyboard that cannot be read is reported once per load.
+    typed_error_shown: bool,
+    /// For starting the typed-text monitor.
+    events: mpsc::Sender<Event>,
     /// Poked by the API when a rule registers or removes a hotkey.
     triggers_changed: Arc<Notify>,
+    /// What the user set from the panel or the command line, on disk.
+    settings: Settings,
     /// The window with keyboard focus, as of the last event.
-    focused: Option<Focused>,
+    focused: Option<WinRef>,
+    /// What is known about open windows, so a close event can name its
+    /// window. Filled from open, focus and title events.
+    known: HashMap<String, WinRef>,
     started: Instant,
     load_error: Option<String>,
 }
@@ -105,22 +148,46 @@ impl Runtime {
         events: mpsc::Sender<Event>,
     ) -> Result<Self, String> {
         let triggers_changed = Arc::new(Notify::new());
-        let host = LuaHost::load(&Rules::default(), &backends, &triggers_changed).await?;
+        let (settings, settings_problem) = Settings::load(&info.state_dir);
+        let host = LuaHost::load(
+            &Rules::default(),
+            &backends,
+            &triggers_changed,
+            &info.state_dir,
+            &info.config_dir,
+            settings.disabled(),
+        )
+        .await?;
+        let mut hotkeys = Hotkeys::new(info.trigger_command.clone());
+        hotkeys.set_override(settings.override_binds());
         let mut runtime = Self {
             loader,
             backends,
-            hotkeys: Hotkeys::new(info.trigger_command.clone()),
+            hotkeys,
             synced_hotkeys: Vec::new(),
-            timers: Timers::new(events),
+            timers: Timers::new(events.clone()),
+            typed: typed::Typed::default(),
+            typed_watch: None,
+            clip_watch: None,
+            clip_error_shown: false,
+            files: files::Watches::default(),
+            system_watches: HashMap::new(),
+            typed_error_shown: false,
+            events,
             triggers_changed,
+            settings,
             info,
             host,
             jobs: JoinSet::new(),
             pending_reload: None,
             focused: None,
+            known: HashMap::new(),
             started: Instant::now(),
             load_error: None,
         };
+        if let Some(message) = settings_problem {
+            notify_error(&runtime.backends, &message).await;
+        }
         if let Err(message) = runtime.reload().await {
             runtime
                 .report(&format!("{message} (no rules loaded)"))
@@ -138,14 +205,24 @@ impl Runtime {
                     Some(Event::FilesChanged) => self.request_reload(None).await,
                     // A config reload drops the binds we registered at runtime.
                     Some(Event::Hypr(HyprEvent::ConfigReloaded)) => self.sync_hotkeys(true).await,
-                    Some(Event::Hypr(HyprEvent::Focus(window))) => self.focus_changed(window),
+                    Some(Event::Hypr(HyprEvent::Focus(window))) => {
+                        self.focus_changed(window);
+                        self.sync_app_hotkeys().await;
+                    }
+                    Some(Event::Hypr(event)) => {
+                        self.window_event(event);
+                        self.sync_app_hotkeys().await;
+                    }
                     Some(Event::Timer(id)) => self.timer_due(&id),
+                    Some(Event::Typed(key)) => self.typed_key(key),
+                    Some(Event::TypedRescan) => self.sync_typed(true).await,
+                    Some(Event::ClipboardChanged) => self.clipboard_changed(),
+                    Some(Event::ClipboardText(text)) => self.clipboard_text(&text),
+                    Some(Event::File(change)) => self.file_changed(change),
+                    Some(Event::System(event)) => self.system_event(event),
                     Some(Event::Request(request, reply)) => self.handle(request, reply).await,
                 },
-                _ = self.triggers_changed.notified() => {
-                    self.sync_hotkeys(false).await;
-                    self.timers.sync(&self.host.timers());
-                }
+                _ = self.triggers_changed.notified() => self.sync_all().await,
                 Some(finished) = self.jobs.join_next(), if !self.jobs.is_empty() => {
                     if let Err(err) = finished {
                         tracing::error!("a handler task died: {err}");
@@ -157,11 +234,33 @@ impl Runtime {
             }
         };
         self.timers.clear();
+        self.files.clear();
+        self.system_watches.clear();
+        self.clip_watch = None;
+        self.typed_watch = None;
         self.jobs.shutdown().await;
-        if exit == Exit::Shutdown {
-            self.hotkeys.clear(self.backends.hypr.as_ref()).await;
+        if exit == Exit::Shutdown && self.hotkeys.clear(self.backends.hypr.as_ref()).await {
+            self.restore_binds().await;
         }
         exit
+    }
+
+    /// App hotkeys follow the focus: bound while a matching window has it.
+    /// Cheap when nothing changed, as `sync_hotkeys` compares first.
+    async fn sync_app_hotkeys(&mut self) {
+        if self.host.has_app_hotkeys() {
+            self.sync_hotkeys(false).await;
+        }
+    }
+
+    /// Brings the binds, timers and watches in step with the triggers that
+    /// are registered and switched on.
+    async fn sync_all(&mut self) {
+        self.sync_hotkeys(false).await;
+        self.timers.sync(&self.host.timers());
+        self.sync_typed(false).await;
+        self.sync_watches().await;
+        self.sync_system().await;
     }
 
     /// Brings Hyprland's binds in step with the hotkeys of the running
@@ -170,7 +269,7 @@ impl Runtime {
     /// Without `force`, a set of hotkeys that was already synced is not
     /// looked at again. `force` is for when Hyprland may have lost our binds.
     async fn sync_hotkeys(&mut self, force: bool) {
-        let wanted = self.host.hotkeys();
+        let wanted = self.host.hotkeys(self.focused.as_ref());
         if !force && wanted == self.synced_hotkeys {
             return;
         }
@@ -178,100 +277,33 @@ impl Runtime {
             .hotkeys
             .sync(self.backends.hypr.as_ref(), &wanted)
             .await;
-        for (id, message) in report.rejected {
-            self.host.discard(&id);
+        for (_, message) in report.rejected {
             notify_error(&self.backends, &message).await;
+        }
+        for (_, message) in report.taken {
+            tell(&self.backends, &message).await;
+        }
+        if report.restore {
+            self.restore_binds().await;
         }
         match report.error {
             Some(message) => notify_error(&self.backends, &message).await,
             // Remember the set only once Hyprland really has it.
-            None => self.synced_hotkeys = self.host.hotkeys(),
+            None => self.synced_hotkeys = wanted,
         }
     }
 
-    async fn handle(&mut self, request: Request, reply: oneshot::Sender<Response>) {
-        let response = match request {
-            Request::Status => Response::data(&self.status()),
-            Request::List => Response::data(&self.host.triggers()),
-            Request::Trigger { id } => match self.fire(&id) {
-                Ok(()) => Response::ok(format!("fired {id}")),
-                Err(message) => Response::err(message),
-            },
-            Request::Eval { chunk } => {
-                if self.pending_reload.is_some() {
-                    Response::err("a reload is waiting for running handlers, try again in a moment")
-                } else {
-                    let eval = self.host.eval(chunk);
-                    self.jobs.spawn(async move {
-                        let _ = reply.send(match eval.await {
-                            Ok(values) => Response::ok(values),
-                            Err(message) => Response::err(message),
-                        });
-                    });
-                    return;
-                }
-            }
-            Request::Reload => return self.request_reload(Some(reply)).await,
-        };
-        let _ = reply.send(response);
-    }
-
-    fn status(&self) -> Status {
-        Status {
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            pid: std::process::id(),
-            uptime_secs: self.started.elapsed().as_secs(),
-            config_dir: self.info.config_dir.display().to_string(),
-            hyprland_instance: self.info.hyprland_instance.clone(),
-            files: self.host.files().to_vec(),
-            triggers: self.host.trigger_count(),
-            running: self.jobs.len(),
-            reload_pending: self.pending_reload.is_some(),
-            load_error: self.load_error.clone(),
-        }
-    }
-
-    /// A timer went off. A run that is still going from the last tick is not
-    /// queued behind; the tick is skipped.
-    fn timer_due(&mut self, id: &str) {
-        if self.pending_reload.is_some() {
-            return;
-        }
-        let Some(trigger) = self.host.trigger(id) else {
-            return;
-        };
-        if !matches!(trigger.kind, TriggerKind::Every(_)) {
-            return;
-        }
-        if trigger.gate.try_lock().is_err() {
-            tracing::warn!("{id}: still running from its last tick, skipping this one");
-            return;
-        }
-        self.spawn_handler(trigger, MultiValue::new());
-    }
-
-    /// Focus moved. Blur handlers run for the window that lost it, then focus
-    /// handlers for the one that got it. Handlers get `{class, title, address}`.
-    fn focus_changed(&mut self, window: Option<Focused>) {
-        if window == self.focused {
-            return;
-        }
-        let previous = std::mem::replace(&mut self.focused, window);
-        if self.pending_reload.is_some() {
-            return;
-        }
-        let rounds = [(previous, true), (self.focused.clone(), false)];
-        for (window, blur) in rounds {
-            let Some(window) = window else {
-                continue;
-            };
-            for trigger in self.host.focus_triggers(&window, blur) {
-                match self.host.window_table(&window) {
-                    Ok(table) => self
-                        .spawn_handler(trigger, MultiValue::from_iter([mlua::Value::Table(table)])),
-                    Err(err) => tracing::error!("cannot describe the window to a rule: {err}"),
-                }
-            }
+    /// Gives displaced binds back. Only Hyprland's config knows what they
+    /// were, so it is re-read; the `configreloaded` event that follows
+    /// re-syncs ours.
+    async fn restore_binds(&mut self) {
+        tracing::info!("reloading Hyprland's config to give its binds back");
+        if let Err(err) = self.backends.hypr.reload().await {
+            notify_error(
+                &self.backends,
+                &format!("could not reload Hyprland's config to give its binds back: {err}"),
+            )
+            .await;
         }
     }
 
@@ -283,20 +315,48 @@ impl Runtime {
                 "a reload is waiting for running handlers, '{id}' was not fired"
             ));
         }
-        let trigger = self
-            .host
-            .trigger(id)
-            .ok_or_else(|| format!("no trigger named '{id}'"))?;
+        let trigger = match self.host.trigger(id) {
+            Some(trigger) => trigger,
+            None if self.host.has_trigger(id) => {
+                return Err(format!(
+                    "'{id}' is switched off; `om enable '{id}'` turns it back on"
+                ));
+            }
+            None => return Err(format!("no trigger named '{id}'")),
+        };
+        if let TriggerKind::ModeKey { once: true, .. } = &trigger.kind {
+            let hypr = self.backends.hypr.clone();
+            self.jobs.spawn(async move {
+                if let Err(err) = hypr.dispatch("hl.dsp.submap(\"reset\")").await {
+                    tracing::warn!("could not leave the mode: {err}");
+                }
+            });
+        }
         self.spawn_handler(trigger, MultiValue::new());
         Ok(())
     }
 
     fn spawn_handler(&mut self, trigger: Trigger, args: MultiValue) {
+        self.spawn_handler_after(trigger, args, async {});
+    }
+
+    /// Like `spawn_handler`, with `before` awaited first in the same job.
+    fn spawn_handler_after(
+        &mut self,
+        trigger: Trigger,
+        args: MultiValue,
+        before: impl std::future::Future<Output = ()> + Send + 'static,
+    ) {
         let backends = self.backends.clone();
         tracing::info!("{}: fired ({})", trigger.id, trigger.origin);
         let started = Instant::now();
-        let pressed = matches!(trigger.kind, TriggerKind::Hotkey(_)).then_some(started);
+        let pressed = matches!(
+            trigger.kind,
+            TriggerKind::Hotkey(_) | TriggerKind::AppHotkey { .. }
+        )
+        .then_some(started);
         self.jobs.spawn(HOTKEY_PRESSED.scope(pressed, async move {
+            before.await;
             match run_handler(&trigger, args).await {
                 Ok(()) => tracing::info!(
                     "{}: done in {:.1}s",
@@ -349,7 +409,14 @@ impl Runtime {
     /// failure the current state stays untouched.
     async fn reload(&mut self) -> Result<usize, String> {
         let rules = (self.loader)()?;
-        let loading = LuaHost::load(&rules, &self.backends, &self.triggers_changed);
+        let loading = LuaHost::load(
+            &rules,
+            &self.backends,
+            &self.triggers_changed,
+            &self.info.state_dir,
+            &self.info.config_dir,
+            self.settings.disabled(),
+        );
         let host = match timeout(LOAD_TIMEOUT, loading).await {
             Ok(loaded) => loaded?,
             Err(_) => {
@@ -361,8 +428,9 @@ impl Runtime {
         };
         self.host = host;
         self.load_error = None;
-        self.sync_hotkeys(false).await;
-        self.timers.sync(&self.host.timers());
+        self.typed_error_shown = false;
+        self.clip_error_shown = false;
+        self.sync_all().await;
         tracing::info!(
             "loaded {} file(s), {} trigger(s)",
             rules.sources.len(),
@@ -375,5 +443,14 @@ impl Runtime {
     async fn report(&mut self, message: &str) {
         self.load_error = Some(message.to_string());
         notify_error(&self.backends, message).await;
+    }
+}
+
+/// Something the user should know that is not an error: a chord taken
+/// from another bind.
+async fn tell(backends: &Backends, message: &str) {
+    tracing::info!("{message}");
+    if let Err(err) = backends.notifier.notify("omaestro override", message).await {
+        tracing::warn!("could not notify: {err}");
     }
 }

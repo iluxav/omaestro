@@ -163,17 +163,22 @@ async fn window_describes_the_focused_window() {
     assert_eq!(h.eval("return om.window()").await.unwrap(), ["nil"]);
     h.fakes.hypr.set_window("firefox", "Some page");
     assert_eq!(
-        h.eval("return om.window()").await.unwrap(),
-        [
-            r#"{address = "0x1", class = "firefox", floating = false, title = "Some page", workspace = "1"}"#
-        ]
+        h.eval("local w = om.window() return w.address, w.class, w.title, w.workspace, w.floating")
+            .await
+            .unwrap(),
+        ["0x1", "firefox", "Some page", "1", "false"]
     );
 }
 
 #[tokio::test(start_paused = true)]
-async fn the_demo_rule_rewrites_the_selection_in_place() {
-    let rule = include_str!("../../../examples/rewrite-selection.lua");
-    let h = Harness::start(&[("rules.d/rewrite-selection.lua", rule)]).await;
+async fn the_ai_text_plugin_rewrites_the_selection_in_place() {
+    let h = Harness::start(&[]).await;
+    h.install_builtin("ai-text");
+    assert!(
+        h.save(&[("rules.d/ai.lua", "om.use('ai-text').setup({})")])
+            .await
+            .ok
+    );
     h.fakes.hypr.set_window("firefox", "Compose");
     h.fakes.clipboard.select("me wants cofee now");
     h.fakes.llm.answer("  I would like a coffee now.\n");

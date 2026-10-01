@@ -1,6 +1,12 @@
 //! Clipboard and primary selection through `wl-paste` and `wl-copy`.
 
-use super::{BackendError, BoxFuture, ClipContent, Clipboard, Result, run};
+use std::process::Stdio;
+
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc;
+
+use super::{BackendError, BoxFuture, ClipContent, Clipboard, Result, Watching, run};
+use crate::runtime::Event;
 
 const PASTE: &str = "wl-paste";
 const COPY: &str = "wl-copy";
@@ -81,6 +87,41 @@ impl Clipboard for WlClipboard {
 
     fn clear(&self) -> BoxFuture<'_, Result<()>> {
         Box::pin(async move { run::feed(COPY, &["--clear"], &[]).await })
+    }
+
+    fn watch(&self, events: mpsc::Sender<Event>) -> std::result::Result<Watching, String> {
+        // `wl-paste --watch` runs a command on every change; a line of output
+        // per change is all the daemon needs, it reads the content itself.
+        let mut child = tokio::process::Command::new(PASTE)
+            .args(["--watch", "echo", "changed"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|err| format!("cannot start `{PASTE} --watch`: {err}"))?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "no output from wl-paste".to_string())?;
+        let task = tokio::spawn(async move {
+            let mut lines = BufReader::new(stdout).lines();
+            while let Ok(Some(_)) = lines.next_line().await
+                && events.send(Event::ClipboardChanged).await.is_ok()
+            {}
+            // Dropping the child here ends the watch.
+            drop(child);
+        });
+        Ok(Watching::new(AbortOnDrop(task)))
+    }
+}
+
+/// Stops the reader task, and with it `wl-paste`, when the watch is dropped.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
     }
 }
 
