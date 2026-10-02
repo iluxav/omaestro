@@ -18,8 +18,8 @@ endpoint and nowhere else.
 om plugin add ai-text
 ```
 
-It asks for its options as it installs (Enter keeps a default);
-`om plugin configure ai-text` changes them later. Both write
+It installs with its defaults and lists them; `om plugin configure ai-text`
+opens them as a form in your editor. Either way they are written to
 `~/.config/omaestro/rules.d/ai-text.lua`, which you can also edit.
 
 That writes `~/.config/omaestro/rules.d/ai-text.lua`, which is where the

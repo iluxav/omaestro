@@ -14,8 +14,8 @@ too, which also opens the panel when the daemon is down.
 om plugin add panel
 ```
 
-It asks for its options as it installs (Enter keeps a default);
-`om plugin configure panel` changes them later. Both write
+It installs with its defaults and lists them; `om plugin configure panel`
+opens them as a form in your editor. Either way they are written to
 `~/.config/omaestro/rules.d/panel.lua`, which you can also edit.
 
 ## Options

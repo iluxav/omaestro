@@ -132,16 +132,17 @@ om plugin available            # omaestro's own (plugins/ in its repo): ai-text,
 om plugin add window-halves    # fetched from GitHub into lib/, plus rules.d/window-halves.lua (options go there)
 om plugin add you/repo         # any repository whose root is a plugin; you/repo/dir for one inside it;
                                # a GitHub browser URL, any git URL (--path, --ref), or ./a-directory
-om plugin configure NAME       # asks for its options again (from its plugin.json); --set k=v --defaults for scripts
+om plugin configure NAME       # its options as a form in $EDITOR (from its plugin.json); --set k=v without the form
 om plugin new my-plugin        # a skeleton of your own (init.lua, README, plugin.json), git init, opened in $EDITOR
-om plugin list | update | remove
+om plugin list | update | remove NAME | remove --all   # --all: every plugin and the rules om wrote, to start over
 ```
 
 To write one: `om plugin new <name>`, keep every option in `setup(opts)`
 with a default, use `false` for "switch this chord off", describe each simple
 option in `plugin.json` (types: chord, modifiers + keys, string, path, bool,
-number, interval, time, enum + options; `optional` allows none) so `om
-plugin add` asks for it, document all options in the README, push to GitHub;
+number, interval, time, enum + options; `optional` allows none; `when`/`unless`
+name a yes/no option it depends on) so `om
+plugin configure` shows it in its form, document all options in the README, push to GitHub;
 others install it with `om plugin add you/name`. A plugin's settings live in
 the user's `rules.d/<name>.lua`, never in its code.
 

@@ -12,6 +12,8 @@ fn opt(kind: Kind) -> Opt {
         optional: false,
         options: vec!["left".into(), "right".into()],
         keys: vec!["Left".into(), "Right".into()],
+        when: None,
+        unless: None,
     }
 }
 

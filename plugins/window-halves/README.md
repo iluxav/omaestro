@@ -22,8 +22,8 @@ so change `chord` if you need that.
 om plugin add window-halves
 ```
 
-It asks for its options as it installs (Enter keeps a default);
-`om plugin configure window-halves` changes them later. Both write
+It installs with its defaults and lists them; `om plugin configure window-halves`
+opens them as a form in your editor. Either way they are written to
 `~/.config/omaestro/rules.d/window-halves.lua`, which you can also edit.
 
 Options go in `~/.config/omaestro/rules.d/window-halves.lua`:

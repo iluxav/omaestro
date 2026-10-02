@@ -1,27 +1,28 @@
-//! Asking for a plugin's options: on `om plugin add` (before anything is
-//! installed) and on `om plugin configure`, from its `plugin.json`. Chords
-//! are checked against what Hyprland already binds while you choose them,
-//! not afterwards. The answers go into the plugin's rule file.
+//! A plugin's options, from its `plugin.json`: `om plugin add` installs with
+//! the defaults (or `--set`) and shows what it chose; `om plugin configure`
+//! opens every option as a form in your editor and checks it on save. Chords
+//! are checked against what Hyprland already binds. The result goes into
+//! the plugin's rule file, never its code.
 
-use std::io::{BufRead, IsTerminal, Write};
+use std::io::IsTerminal;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value as Json};
 
+use super::form::{self, Edited};
 use super::rule::{description_of, is_generated_rule, read_values, rule_path, write_rule};
-use super::schema::{self, Opt, Schema, display};
+use super::schema::{self, Schema};
 use crate::backend::hypr::HyprCtl;
+use crate::backend::run::find_on_path;
 use crate::backend::{BindInfo, Hypr};
 use crate::chord::Chord;
 
 /// How options are chosen for one `om plugin add` or `configure`.
 #[derive(Debug, Clone, Default)]
 pub struct Setup {
-    /// `--set key=value`, applied before any question.
+    /// `--set key=value`.
     pub sets: Vec<(String, String)>,
-    /// Ask in the terminal (stdin and stdout are one, and no `--defaults`).
-    pub interactive: bool,
     /// Hyprland's binds, to check chords against; empty: no check.
     pub binds: Vec<BindInfo>,
     /// Replace a rule file om did not write.
@@ -29,14 +30,13 @@ pub struct Setup {
 }
 
 impl Setup {
-    /// Defaults, no questions: for scripts and the first-run offer.
+    /// Defaults, no checks: for the first-run offer.
     pub fn defaults() -> Self {
         Self::default()
     }
 
-    /// From the command line: `--set` pairs, `--defaults`, `--force`; asks
-    /// only in a terminal, and reads Hyprland's binds when it can.
-    pub async fn from_cli(sets: &[String], defaults: bool, force: bool) -> Result<Self> {
+    /// From the command line, with Hyprland's binds when it can read them.
+    pub async fn from_cli(sets: &[String], force: bool) -> Result<Self> {
         let mut pairs = Vec::new();
         for set in sets {
             let Some((key, value)) = set.split_once('=') else {
@@ -44,12 +44,9 @@ impl Setup {
             };
             pairs.push((key.trim().to_string(), value.to_string()));
         }
-        let interactive =
-            !defaults && std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
         let binds = HyprCtl.binds().await.unwrap_or_default();
         Ok(Self {
             sets: pairs,
-            interactive,
             binds,
             force,
         })
@@ -70,78 +67,44 @@ impl Setup {
     }
 }
 
-/// One line from the terminal; `None` at the end of input (Ctrl+D).
-pub fn ask_stdin(prompt: &str) -> Option<String> {
-    print!("{prompt}");
-    let _ = std::io::stdout().flush();
-    let mut line = String::new();
-    match std::io::stdin().lock().read_line(&mut line) {
-        Ok(0) | Err(_) => None,
-        Ok(_) => Some(line.trim_end_matches(['\n', '\r']).to_string()),
-    }
+/// A plugin's options as they stand.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Resolved {
+    /// Every option of the schema.
+    pub values: Map<String, Json>,
+    /// Options holding something the schema's type cannot show (Lua code);
+    /// left as they are.
+    pub kept: Map<String, Json>,
+    /// Options the rule file passes that the schema does not describe.
+    pub extras: Vec<(String, Json)>,
 }
 
-/// The chords in `values` someone else holds, or that two options share.
-fn conflicts(
-    plugin: &str,
-    schema: &Schema,
-    values: &Map<String, Json>,
-    opt: &Opt,
-    setup: &Setup,
-) -> Vec<String> {
-    let value = values.get(&opt.key).cloned().unwrap_or(Json::Null);
-    let mut found = Vec::new();
-    for chord in opt.chords(&value) {
-        if let Some(holder) = setup.holder(plugin, &chord) {
-            found.push(format!("{chord} is taken by {holder}"));
-        }
-        for other in schema.options.iter().filter(|o| o.key != opt.key) {
-            let theirs = values.get(&other.key).cloned().unwrap_or(Json::Null);
-            if other.chords(&theirs).iter().any(|c| c.same_keys(&chord)) {
-                found.push(format!("{chord} is also {}", other.key));
-            }
-        }
-    }
-    found
-}
-
-/// Works out the options: what is there now (`start`, from a rule file),
-/// else the defaults; then `--set`; then, in a terminal, a question per
-/// option. Returns the options to write, in the schema's order, only those
-/// that differ from the default, followed by anything the rule had that the
-/// schema does not describe.
-pub fn fill(
+/// What is there now (`start`, from a rule file), else the defaults; then
+/// `--set` on top.
+pub fn resolve(
     plugin: &str,
     schema: &Schema,
     start: &Map<String, Json>,
-    setup: &Setup,
-    ask: &mut (dyn FnMut(&str) -> Option<String> + Send),
-) -> Result<Vec<(String, Json)>> {
-    let mut values = Map::new();
-    // Values the schema cannot represent (a list where it expects a switch,
-    // say) stay as written and are not asked about.
-    let mut kept = Vec::new();
+    sets: &[(String, String)],
+) -> Result<Resolved> {
+    let mut resolved = Resolved::default();
     for opt in &schema.options {
-        match start.get(&opt.key) {
-            Some(value) if schema.accepts(&opt.key, value) => {
-                values.insert(opt.key.clone(), value.clone());
-            }
+        let value = match start.get(&opt.key) {
+            Some(value) if schema.accepts(&opt.key, value) => value.clone(),
             Some(value) => {
-                kept.push(opt.key.clone());
-                values.insert(opt.key.clone(), value.clone());
+                resolved.kept.insert(opt.key.clone(), value.clone());
+                value.clone()
             }
-            None => {
-                values.insert(opt.key.clone(), opt.default_value());
-            }
-        }
+            None => opt.default_value(),
+        };
+        resolved.values.insert(opt.key.clone(), value);
     }
-    let extras: Vec<(String, Json)> = start
+    resolved.extras = start
         .iter()
         .filter(|(key, _)| schema.get(key).is_none())
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
-
-    for (key, text) in &setup.sets {
+    for (key, text) in sets {
         let Some(opt) = schema.get(key) else {
             let keys: Vec<&str> = schema.options.iter().map(|o| o.key.as_str()).collect();
             bail!(
@@ -152,82 +115,292 @@ pub fn fill(
         let value = opt
             .parse(text)
             .map_err(|err| anyhow::anyhow!("--set {key}: {err}"))?;
-        values.insert(key.clone(), value);
-        kept.retain(|k| k != key);
+        resolved.values.insert(key.clone(), value);
+        resolved.kept.remove(key);
     }
+    Ok(resolved)
+}
 
-    if setup.interactive && !schema.options.is_empty() {
-        println!("{plugin}: Enter keeps a value; `none` turns an optional one off; Ctrl+D cancels");
-        for opt in &schema.options {
-            if kept.contains(&opt.key) {
-                println!("  {}: kept as written in the rule file", opt.title());
-                continue;
-            }
-            if let Some(description) = &opt.description {
-                println!("  {description}");
-            }
-            loop {
-                let current = values.get(&opt.key).cloned().unwrap_or(Json::Null);
-                let Some(answer) =
-                    ask(&format!("  {} [{}]: ", opt.title(), display(opt, &current)))
-                else {
-                    println!();
-                    bail!("cancelled; nothing was changed");
-                };
-                if !answer.trim().is_empty() {
-                    match opt.parse(&answer) {
-                        Ok(value) => {
-                            values.insert(opt.key.clone(), value);
-                        }
-                        Err(err) => {
-                            println!("    {err}");
-                            continue;
-                        }
-                    }
-                }
-                let clashes = conflicts(plugin, schema, &values, opt, setup);
-                if clashes.is_empty() {
-                    break;
-                }
-                for clash in &clashes {
-                    println!("    {clash}");
-                }
-                let keep = ask("    keep it anyway? [y/N]: ").unwrap_or_default();
-                if matches!(keep.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
-                    break;
-                }
-            }
-        }
-    } else {
-        for opt in &schema.options {
-            for clash in conflicts(plugin, schema, &values, opt, setup) {
-                eprintln!(
-                    "om: {plugin}: {clash}; it will be refused unless you pick another (om plugin configure {plugin})"
-                );
-            }
-        }
-    }
-
+/// The options to write into the rule file: those that differ from the
+/// default, in the schema's order, then anything the schema does not
+/// describe.
+pub fn to_write(schema: &Schema, resolved: &Resolved) -> Vec<(String, Json)> {
     let mut out: Vec<(String, Json)> = schema
         .options
         .iter()
         .filter_map(|opt| {
-            let value = values.get(&opt.key)?.clone();
-            let changed = value != opt.default_value() && !value.is_null();
-            changed.then(|| (opt.key.clone(), value))
+            let value = resolved.values.get(&opt.key)?.clone();
+            (value != opt.default_value() && !value.is_null()).then(|| (opt.key.clone(), value))
         })
         .collect();
-    out.extend(extras);
-    Ok(out)
+    out.extend(resolved.extras.iter().cloned());
+    out
 }
 
-/// `om plugin configure`: the options of an installed plugin, asked again
-/// with its rule file's values as the starting point, and written back.
+/// Every chord in the options that Hyprland or another option already has.
+pub fn conflicts(
+    plugin: &str,
+    schema: &Schema,
+    values: &Map<String, Json>,
+    setup: &Setup,
+) -> Vec<String> {
+    let mut found = Vec::new();
+    for opt in schema.options.iter().filter(|o| o.active(values)) {
+        let value = values.get(&opt.key).cloned().unwrap_or(Json::Null);
+        for chord in opt.chords(&value) {
+            if let Some(holder) = setup.holder(plugin, &chord) {
+                found.push(format!("{}: {chord} is taken by {holder}", opt.key));
+            }
+            for other in schema
+                .options
+                .iter()
+                .filter(|o| o.key > opt.key && o.active(values))
+            {
+                let theirs = values.get(&other.key).cloned().unwrap_or(Json::Null);
+                if other.chords(&theirs).iter().any(|c| c.same_keys(&chord)) {
+                    found.push(format!("{} and {} are both {chord}", opt.key, other.key));
+                }
+            }
+        }
+    }
+    found
+}
+
+/// The options as a small table, then any clash, then how to change them.
+pub fn summary(plugin: &str, schema: &Schema, resolved: &Resolved, setup: &Setup) -> String {
+    if schema.options.is_empty() {
+        return String::new();
+    }
+    let rows: Vec<(String, String, String)> = schema
+        .options
+        .iter()
+        .map(|opt| {
+            let value = resolved.values.get(&opt.key).cloned().unwrap_or(Json::Null);
+            let shown = if resolved.kept.contains_key(&opt.key) {
+                "(Lua code)".to_string()
+            } else {
+                let shown = form::form_value(opt, &value);
+                if shown.is_empty() {
+                    "(default)".to_string()
+                } else {
+                    shown
+                }
+            };
+            let mut label = opt.label.clone().unwrap_or_default();
+            if !opt.active(&resolved.values)
+                && let Some(reason) = opt.inactive_reason()
+            {
+                label = format!("{label} ({reason})");
+            }
+            (opt.key.clone(), shown, label)
+        })
+        .collect();
+    let key_width = rows.iter().map(|r| r.0.len()).max().unwrap_or(0);
+    let value_width = rows.iter().map(|r| r.1.chars().count()).max().unwrap_or(0);
+    let mut out = String::new();
+    for (key, value, label) in rows {
+        out.push_str(&format!(
+            "  {key:key_width$}  {value:value_width$}  {label}\n"
+        ));
+    }
+    for clash in conflicts(plugin, schema, &resolved.values, setup) {
+        out.push_str(&format!("  ! {clash}\n"));
+    }
+    out.push_str(&format!("change them: om plugin configure {plugin}\n"));
+    out
+}
+
+/// An editor: given the form, returns it as saved.
+pub type Editor<'a> = &'a mut (dyn FnMut(&str) -> Result<String> + Send);
+
+/// Opens `text` in your editor, in this terminal or as a window, waits for
+/// you to close it, and returns the file as it was saved.
+pub fn edit_in_editor(text: &str) -> Result<String> {
+    let mut command = editor_command().context(
+        "no editor found: set $EDITOR (nvim, vim, nano, code, ...), or use --set key=value",
+    )?;
+    let terminal = !is_gui(&command[0]);
+    if terminal && !std::io::stdin().is_terminal() {
+        bail!(
+            "the options form needs a terminal for {}; without one, use --set key=value",
+            command[0]
+        );
+    }
+    let path = std::env::temp_dir().join(format!("omaestro-options-{}.ini", std::process::id()));
+    std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
+    if !terminal {
+        println!(
+            "opened the form in {}; save it and close its tab to continue",
+            command[0]
+        );
+    }
+    let started = std::time::Instant::now();
+    command.push(path.to_string_lossy().to_string());
+    let status = std::process::Command::new(&command[0])
+        .args(&command[1..])
+        .status()
+        .with_context(|| format!("running {}", command[0]));
+    let saved = std::fs::read_to_string(&path);
+    let status = match status {
+        Ok(status) => status,
+        Err(err) => {
+            let _ = std::fs::remove_file(&path);
+            return Err(err);
+        }
+    };
+    // An editor that hands the file to a window and returns at once (a GUI
+    // editor without its wait flag) would leave the form empty: keep the
+    // file and say so instead of reading nothing.
+    if started.elapsed() < std::time::Duration::from_millis(800)
+        && saved.as_deref().ok() == Some(text)
+    {
+        bail!(
+            "{} returned before the form could be edited (it does not wait for the file to close); \
+             set $VISUAL to an editor that waits, like VISUAL=\"code --wait\" or VISUAL=nvim. \
+             The form is in {}",
+            command[0],
+            path.display()
+        );
+    }
+    let _ = std::fs::remove_file(&path);
+    if !status.success() {
+        bail!("{} exited with {status}; nothing was changed", command[0]);
+    }
+    saved.with_context(|| format!("reading {}", path.display()))
+}
+
+/// GUI editors, and the flag that makes each wait until the file is closed.
+const GUI_EDITORS: &[(&str, &str)] = &[
+    ("code", "--wait"),
+    ("code-insiders", "--wait"),
+    ("codium", "--wait"),
+    ("cursor", "--wait"),
+    ("windsurf", "--wait"),
+    ("zed", "--wait"),
+    ("zeditor", "--wait"),
+    ("subl", "--wait"),
+    ("sublime_text", "--wait"),
+    ("gedit", "--wait"),
+    ("kate", "--block"),
+    ("gvim", "--nofork"),
+];
+
+fn base(program: &str) -> &str {
+    program.rsplit('/').next().unwrap_or(program)
+}
+
+fn is_gui(program: &str) -> bool {
+    GUI_EDITORS.iter().any(|(name, _)| *name == base(program))
+}
+
+/// The editor command to run, from the configured one (`$VISUAL` or
+/// `$EDITOR`) and the editor Omarchy's launcher would pick
+/// (`omarchy_default`): `omarchy-launch-editor` is replaced by that editor
+/// (nvim when there is none), and a GUI editor gets the flag that makes it
+/// wait for the file to be closed, unless it has it already.
+fn waiting(configured: &str, omarchy_default: Option<String>) -> String {
+    let mut parts: Vec<String> = configured.split_whitespace().map(str::to_string).collect();
+    if parts
+        .first()
+        .is_some_and(|p| base(p) == "omarchy-launch-editor")
+    {
+        let chosen = omarchy_default.unwrap_or_else(|| "nvim".to_string());
+        parts = chosen.split_whitespace().map(str::to_string).collect();
+    }
+    if let Some(program) = parts.first()
+        && let Some((_, flag)) = GUI_EDITORS.iter().find(|(name, _)| *name == base(program))
+        && !parts.iter().any(|p| p == flag || p == "-w")
+    {
+        parts.push(flag.to_string());
+    }
+    parts.join(" ")
+}
+
+/// The editor to run, as program and arguments: `$VISUAL`, `$EDITOR`, or
+/// the first of nvim, vim, vi, nano on PATH, made to wait (see `waiting`).
+pub fn editor_command() -> Option<Vec<String>> {
+    let configured = ["VISUAL", "EDITOR"]
+        .iter()
+        .find_map(|var| std::env::var(var).ok().filter(|e| !e.trim().is_empty()))
+        .or_else(|| {
+            ["nvim", "vim", "vi", "nano"]
+                .iter()
+                .find(|e| find_on_path(e).is_some())
+                .map(|e| e.to_string())
+        })?;
+    // What omarchy-launch-editor would start: the first line of Omarchy's
+    // default-editor file, when that editor is installed.
+    let omarchy_default = std::env::var_os("HOME")
+        .map(|home| std::path::PathBuf::from(home).join(".local/state/omarchy/defaults/editor"))
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|text| text.lines().next().map(|l| l.trim().to_string()))
+        .filter(|e| {
+            e.split_whitespace()
+                .next()
+                .is_some_and(|program| find_on_path(program).is_some())
+        });
+    let command = waiting(&configured, omarchy_default);
+    Some(command.split_whitespace().map(str::to_string).collect())
+}
+
+/// The form, round after round, until it is saved without problems (a
+/// clash, once shown, is accepted when saved again as it is). None when
+/// nothing changed or the form was emptied.
+fn edit_loop(
+    plugin: &str,
+    schema: &Schema,
+    resolved: &Resolved,
+    setup: &Setup,
+    edit: Editor,
+) -> Result<Option<Resolved>> {
+    let mut text = form::render(plugin, schema, &resolved.values, &resolved.kept);
+    let mut warned: Vec<String> = Vec::new();
+    loop {
+        let saved = edit(&text)?;
+        match form::parse(&saved, schema, &resolved.kept) {
+            Err(problems) => {
+                let mut notes =
+                    vec!["NOT SAVED. Fix these, then save and close again (or delete every option line to cancel):".to_string()];
+                notes.extend(problems.into_iter().map(|p| format!("  {p}")));
+                text = form::with_notes(&saved, &notes);
+            }
+            Ok(Edited::Cancelled) => return Ok(None),
+            Ok(Edited::Values(values)) => {
+                if values == resolved.values {
+                    return Ok(None);
+                }
+                let clashes = conflicts(plugin, schema, &values, setup);
+                if !clashes.is_empty() && clashes != warned {
+                    let mut notes = vec![
+                        "NOT SAVED YET. These chords are taken; change them, or save and close again as they are to keep them:"
+                            .to_string(),
+                    ];
+                    notes.extend(clashes.iter().map(|c| format!("  {c}")));
+                    text = form::with_notes(&saved, &notes);
+                    warned = clashes;
+                    continue;
+                }
+                let mut changed = resolved.clone();
+                for key in values.keys() {
+                    if resolved.values.get(key) != values.get(key) {
+                        changed.kept.remove(key);
+                    }
+                }
+                changed.values = values;
+                return Ok(Some(changed));
+            }
+        }
+    }
+}
+
+/// `om plugin configure`: with `--set`, those options; without, the form
+/// in the editor. Either way the rule file is rewritten and the result
+/// shown.
 pub async fn configure(
     config_dir: &Path,
     name: &str,
     setup: &Setup,
-    ask: &mut (dyn FnMut(&str) -> Option<String> + Send),
+    edit: Editor<'_>,
 ) -> Result<()> {
     let dir = config_dir.join("lib").join(name);
     if !dir.join("init.lua").is_file() {
@@ -253,7 +426,6 @@ pub async fn configure(
             }
             let values = match read_values(&text) {
                 Ok(values) => values,
-                // --force replaces the file anyway: start from the defaults.
                 Err(err) if setup.force => {
                     eprintln!("om: {}: {err}; starting from the defaults", path.display());
                     Map::new()
@@ -267,164 +439,31 @@ pub async fn configure(
     let description = description
         .or_else(|| super::fetch::summary(&dir))
         .unwrap_or_else(|| "a plugin".to_string());
-    let values = fill(name, &schema, &start, setup, ask)?;
-    write_rule(config_dir, name, &description, &values, true, setup.force)
-        .with_context(|| format!("saving {name}'s options"))?;
+    let current = resolve(name, &schema, &start, &[])?;
+    let resolved = if setup.sets.is_empty() {
+        match edit_loop(name, &schema, &current, setup, edit)? {
+            Some(resolved) => resolved,
+            None => {
+                println!("{name}: nothing changed");
+                return Ok(());
+            }
+        }
+    } else {
+        resolve(name, &schema, &start, &setup.sets)?
+    };
+    write_rule(
+        config_dir,
+        name,
+        &description,
+        &to_write(&schema, &resolved),
+        true,
+        setup.force,
+    )
+    .with_context(|| format!("saving {name}'s options"))?;
+    print!("{}", summary(name, &schema, &resolved, setup));
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn schema() -> Schema {
-        serde_json::from_value(json!({ "options": [
-            { "key": "chord", "type": "chord", "label": "Open it", "default": "SUPER + ALT + P" },
-            { "key": "toggle", "type": "chord", "default": "SUPER + ALT + C", "optional": true },
-            { "key": "keep", "type": "number", "default": 10 },
-            { "key": "modes", "type": "bool", "default": false }
-        ]}))
-        .unwrap()
-    }
-
-    fn scripted(answers: &[&str]) -> impl FnMut(&str) -> Option<String> {
-        let mut answers: std::collections::VecDeque<String> =
-            answers.iter().map(|a| a.to_string()).collect();
-        move |_prompt| answers.pop_front()
-    }
-
-    fn bind(chord: &str, description: &str) -> BindInfo {
-        BindInfo {
-            chord: Chord::parse(chord).unwrap(),
-            description: description.to_string(),
-            submap: String::new(),
-        }
-    }
-
-    #[test]
-    fn defaults_write_nothing_and_answers_write_what_changed() {
-        let none = Setup::defaults();
-        let out = fill("p", &schema(), &Map::new(), &none, &mut scripted(&[])).unwrap();
-        assert!(out.is_empty());
-
-        let ask = Setup {
-            interactive: true,
-            ..Setup::default()
-        };
-        let out = fill(
-            "p",
-            &schema(),
-            &Map::new(),
-            &ask,
-            &mut scripted(&["super+ctrl+p", "none", "", "yes"]),
-        )
-        .unwrap();
-        assert_eq!(
-            out,
-            [
-                ("chord".to_string(), json!("SUPER + CTRL + P")),
-                ("toggle".to_string(), json!(false)),
-                ("modes".to_string(), json!(true)),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_bad_answer_is_asked_again_and_ctrl_d_cancels() {
-        let ask = Setup {
-            interactive: true,
-            ..Setup::default()
-        };
-        let out = fill(
-            "p",
-            &schema(),
-            &Map::new(),
-            &ask,
-            &mut scripted(&["", "", "ten", "12", ""]),
-        )
-        .unwrap();
-        assert_eq!(out, [("keep".to_string(), json!(12))]);
-        let err = fill("p", &schema(), &Map::new(), &ask, &mut scripted(&[""])).unwrap_err();
-        assert!(err.to_string().starts_with("cancelled"));
-    }
-
-    #[test]
-    fn a_taken_chord_is_caught_while_choosing() {
-        let setup = Setup {
-            interactive: true,
-            binds: vec![
-                bind("SUPER + ALT + P", "Omarchy: something"),
-                bind("SUPER + ALT + C", "omaestro: lib/p/init.lua:3"),
-            ],
-            ..Setup::default()
-        };
-        // The default is taken: decline it, pick another; its own bind is not a clash.
-        let out = fill(
-            "p",
-            &schema(),
-            &Map::new(),
-            &setup,
-            &mut scripted(&["", "n", "SUPER + ALT + X", "", "", ""]),
-        )
-        .unwrap();
-        assert_eq!(out, [("chord".to_string(), json!("SUPER + ALT + X"))]);
-        // Or keep it anyway.
-        let out = fill(
-            "p",
-            &schema(),
-            &Map::new(),
-            &setup,
-            &mut scripted(&["", "y", "", "", ""]),
-        )
-        .unwrap();
-        assert!(out.is_empty());
-        assert_eq!(
-            setup
-                .holder("p", &Chord::parse("SUPER + ALT + P").unwrap())
-                .as_deref(),
-            Some("\"Omarchy: something\"")
-        );
-        assert_eq!(
-            setup.holder("p", &Chord::parse("SUPER + ALT + C").unwrap()),
-            None
-        );
-        assert_eq!(
-            setup
-                .holder("q", &Chord::parse("SUPER + ALT + C").unwrap())
-                .as_deref(),
-            Some("an omaestro rule (lib/p/init.lua:3)")
-        );
-    }
-
-    #[test]
-    fn sets_and_what_the_rule_already_had() {
-        let mut start = Map::new();
-        start.insert("keep".into(), json!(25));
-        start.insert("modes".into(), json!([["a", "b"]])); // a list where the schema says bool
-        start.insert("extra".into(), json!("x"));
-        let setup = Setup {
-            sets: vec![("toggle".into(), "none".into())],
-            ..Setup::default()
-        };
-        let out = fill("p", &schema(), &start, &setup, &mut scripted(&[])).unwrap();
-        assert_eq!(
-            out,
-            [
-                ("toggle".to_string(), json!(false)),
-                ("keep".to_string(), json!(25)),
-                ("modes".to_string(), json!([["a", "b"]])),
-                ("extra".to_string(), json!("x")),
-            ]
-        );
-        let bad = Setup {
-            sets: vec![("nope".into(), "1".into())],
-            ..Setup::default()
-        };
-        let err = fill("p", &schema(), &Map::new(), &bad, &mut scripted(&[])).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("has no option 'nope'; it has: chord, toggle, keep, modes")
-        );
-    }
-}
+#[path = "configure_tests.rs"]
+mod tests;

@@ -112,14 +112,17 @@ om plugin add panel window-halves text-tools  # several at once: the starter set
 | `downloads` | a notification when something lands in `~/Downloads` |
 | `panel` | SUPER+ALT+O opens the rules panel of the Omarchy plugin |
 
-In a terminal, `om plugin add` asks for a plugin's options as it installs
-it: its chords, names and switches, each with its default (Enter keeps it,
-`none` turns an optional one off). Chords are checked against what Hyprland
-and your other rules already use while you choose, so a clash shows up then
-rather than as a refused rule later. `om plugin configure <name>` asks again
-whenever you like; `--set key=value` and `--defaults` skip the questions.
-The answers go into `~/.config/omaestro/rules.d/<name>.lua`, never into the
-plugin's code, so updates never get in their way. Each plugin's README (in
+`om plugin add` installs a plugin with its defaults and shows them in a
+small table, flagging any chord that Hyprland or another rule already uses.
+`om plugin configure <name>` opens all of its options as a form in your
+editor: each option with what it does, its type and default above it.
+Change what you like, save and close (a windowed editor like VS Code is
+told to wait, so close its tab when you are done); a mistake or a taken chord brings the
+form back with the problem written at the top and your edits intact (save a
+taken chord again as it is to keep it). `--set key=value` changes an option
+without the form, on `add` or `configure`. The result goes into
+`~/.config/omaestro/rules.d/<name>.lua`, never into the plugin's code, so
+updates never get in its way. Each plugin's README (in
 `lib/<name>/`, or [`plugins/`](plugins/) here) describes the options, and
 the rule file is yours to edit too. Fixes and new plugins reach you with
 `om plugin update`, no new `om` release needed:
@@ -231,9 +234,9 @@ return M
 
 Give every option a default, let `false` switch a chord off, and describe
 the options in the README and in `plugin.json` next to `init.lua` (`om
-plugin new` starts one). With `plugin.json`, `om plugin add` and `om plugin
-configure` ask for the options, check chords, and write the answers into
-the user's rule file:
+plugin new` starts one). With `plugin.json`, `om plugin configure` shows the
+options as a form, checks chords, and writes the result into the user's rule
+file:
 
 ```json
 { "options": [
@@ -246,7 +249,10 @@ the user's rule file:
 
 Types: `chord`, `modifiers` (with `keys` they go in front of), `string`,
 `path`, `bool`, `number`, `interval`, `time` (`HH:MM`), `enum` (with
-`options`). `optional` allows `none`. Options that are code (a list of
+`options`). `optional` allows `none`. `"when": "modes"` marks an option
+that only matters while the yes/no option `modes` is on, and `"unless":
+"modes"` one the plugin turns off while it is on; chords of idle options are
+not checked for clashes. Options that are code (a list of
 rules, a function) stay out of it and in the README. When it is ready, push the repository to GitHub.
 Others install it with:
 
@@ -259,6 +265,7 @@ om plugin add https://git.example.com/x.git --path clock     # any git host
 om plugin add ./my-plugin                                    # a directory on disk, as it is
 om plugin update                                             # the latest of every plugin, or one by name
 om plugin remove my-plugin                                   # also drops the rule it wrote
+om plugin remove --all                                       # every plugin, to start over
 ```
 
 `om` keeps a record of where each plugin came from and what it installed:
@@ -292,8 +299,8 @@ reload button.
 | `om eval 'lua'` / `om repl` | run Lua inside the daemon; inspect state |
 | `om panel` | open or close the rules panel of the Omarchy plugin |
 | `om plugin add NAME\|REPO\|URL\|DIR...` | install plugins: one of omaestro's by name, a GitHub repo or a directory in one, any git URL (`--path`, `--ref`), or a directory on disk |
-| `om plugin configure NAME [--set k=v]` | change an installed plugin's options; `add` takes `--set` and `--defaults` too |
-| `om plugin available \| list \| new \| update \| remove` | omaestro's plugins, yours installed, start your own, take the latest, delete one |
+| `om plugin configure NAME [--set k=v]` | change an installed plugin's options in a form in your editor, or with `--set` (which `add` takes too) |
+| `om plugin available \| list \| new \| update \| remove [--all]` | omaestro's plugins, yours installed, start your own, take the latest, delete one or all |
 | `om skill install \| show` | the omaestro skill for AI coding agents (Claude Code: `~/.claude/skills/omaestro`) |
 | `om doctor [--clear]` | the session, the tools, leftover binds; `--clear` removes leftovers |
 | `om daemon [--foreground]` | run the daemon in this terminal |

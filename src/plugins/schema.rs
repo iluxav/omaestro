@@ -65,6 +65,13 @@ pub struct Opt {
     /// For `modifiers`: the keys they go in front of, for checking chords.
     #[serde(default)]
     pub keys: Vec<String>,
+    /// Only used while this boolean option is on (`"when": "modes"`).
+    #[serde(default)]
+    pub when: Option<String>,
+    /// Turned off by the plugin while this boolean option is on, unless the
+    /// user gave it a value of its own (`"unless": "modes"`).
+    #[serde(default)]
+    pub unless: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
@@ -74,12 +81,32 @@ pub struct Schema {
 }
 
 impl Opt {
-    /// What a prompt calls it.
-    pub fn title(&self) -> String {
-        match &self.label {
-            Some(label) => format!("{label} ({})", self.key),
-            None => self.key.clone(),
+    /// Whether the option does anything with these values: a `when` option
+    /// needs its switch on; an `unless` option at its default is off while
+    /// its switch is on.
+    pub fn active(&self, values: &serde_json::Map<String, Json>) -> bool {
+        let on = |key: &Option<String>| {
+            key.as_ref()
+                .is_some_and(|k| values.get(k) == Some(&Json::Bool(true)))
+        };
+        if self.when.is_some() && !on(&self.when) {
+            return false;
         }
+        if on(&self.unless) {
+            let value = values.get(&self.key).cloned().unwrap_or(Json::Null);
+            return value != self.default_value();
+        }
+        true
+    }
+
+    /// When the option is not in use, why, for the form and the summary.
+    pub fn inactive_reason(&self) -> Option<String> {
+        if let Some(key) = &self.when {
+            return Some(format!("only used with {key} = yes"));
+        }
+        self.unless
+            .as_ref()
+            .map(|key| format!("off with {key} = yes, unless given a value of its own"))
     }
 
     /// The default, or "unset" when there is none.
@@ -208,19 +235,6 @@ fn normalize_modifiers(text: &str) -> String {
     format!("{} + ", mods.join(" + "))
 }
 
-/// A value as a prompt shows it: `no` for a switch that is off, `none`
-/// for an optional chord or timer turned off.
-pub fn display(opt: &Opt, value: &Json) -> String {
-    match value {
-        Json::Null => "(unset)".to_string(),
-        Json::Bool(false) if opt.kind == Kind::Bool => "no".to_string(),
-        Json::Bool(false) => "none".to_string(),
-        Json::Bool(true) => "yes".to_string(),
-        Json::String(text) => text.clone(),
-        other => other.to_string(),
-    }
-}
-
 /// A JSON value as a Lua literal for the rule file.
 pub fn lua_literal(value: &Json) -> String {
     match value {
@@ -295,6 +309,15 @@ pub fn load(dir: &Path) -> Result<Option<Schema>> {
                 path.display(),
                 opt.key
             );
+        }
+        for key in [&opt.when, &opt.unless].into_iter().flatten() {
+            if schema.get(key).is_none_or(|other| other.kind != Kind::Bool) {
+                bail!(
+                    "{}: {} depends on {key}, which is not a yes/no option",
+                    path.display(),
+                    opt.key
+                );
+            }
         }
         if let Some(default) = &opt.default
             && !opt.accepts(default)

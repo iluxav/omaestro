@@ -15,8 +15,8 @@ other rules.
 om plugin add window-rules
 ```
 
-It asks for its options as it installs (Enter keeps a default);
-`om plugin configure window-rules` changes them later. Both write
+It installs with its defaults and lists them; `om plugin configure window-rules`
+opens them as a form in your editor. Either way they are written to
 `~/.config/omaestro/rules.d/window-rules.lua`, which you can also edit.
 
 Rules go in `~/.config/omaestro/rules.d/window-rules.lua`:

@@ -15,6 +15,7 @@ use tokio::process::Command;
 
 mod configure;
 pub mod fetch;
+mod form;
 mod rule;
 mod scaffold;
 pub mod schema;
@@ -23,7 +24,7 @@ pub mod source;
 mod tests;
 mod update;
 
-pub use configure::{Setup, ask_stdin, configure};
+pub use configure::{Setup, configure, edit_in_editor};
 use fetch::Record;
 use rule::{drop_rule, write_rule};
 pub use scaffold::new;
@@ -95,8 +96,6 @@ async fn git(cwd: Option<&Path>, args: &[&str]) -> Result<String> {
 /// Installs plugins: for each spec, fetch it, check its shape, copy it into
 /// `lib/<name>`, and (with `rule`) write the rule file that loads it. One
 /// that fails does not stop the others; the error lists every failure.
-// One argument per command-line choice; a struct would only rename them.
-#[allow(clippy::too_many_arguments)]
 pub async fn add(
     config_dir: &Path,
     specs: &[String],
@@ -105,7 +104,6 @@ pub async fn add(
     rule: bool,
     official: &Official,
     setup: &Setup,
-    ask: &mut (dyn FnMut(&str) -> Option<String> + Send),
 ) -> Result<()> {
     if specs.len() > 1 && (reference.is_some() || path.is_some() || !setup.sets.is_empty()) {
         bail!("--ref, --path and --set go with one plugin at a time");
@@ -115,11 +113,7 @@ pub async fn add(
     }
     let mut failed = Vec::new();
     for spec in specs {
-        if let Err(err) = add_one(
-            config_dir, spec, reference, path, rule, official, setup, ask,
-        )
-        .await
-        {
+        if let Err(err) = add_one(config_dir, spec, reference, path, rule, official, setup).await {
             eprintln!("om: {spec}: {err:#}");
             failed.push(spec.clone());
         }
@@ -131,7 +125,6 @@ pub async fn add(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 async fn add_one(
     config_dir: &Path,
     spec: &str,
@@ -140,7 +133,6 @@ async fn add_one(
     rule: bool,
     official: &Official,
     setup: &Setup,
-    ask: &mut (dyn FnMut(&str) -> Option<String> + Send),
 ) -> Result<()> {
     let lib = config_dir.join("lib");
     let source = source::parse(spec, reference, path, official)?;
@@ -155,11 +147,15 @@ async fn add_one(
     let fetched = fetch::fetch(&lib, &source, official).await?;
     let description = fetch::summary(&fetched.dir)
         .unwrap_or_else(|| format!("a plugin from {}", source.describe()));
-    // Its options, chosen before anything is installed: cancelling the
-    // questions leaves nothing behind.
-    let values = if rule {
+    // Its options: the defaults, with --set on top. A bad --set stops here,
+    // before anything is installed.
+    let options = if rule {
         match schema::load(&fetched.dir) {
-            Ok(Some(schema)) => configure::fill(&name, &schema, &Default::default(), setup, ask)?,
+            Ok(Some(schema)) => {
+                let resolved =
+                    configure::resolve(&name, &schema, &Default::default(), &setup.sets)?;
+                Some((schema, resolved))
+            }
             Ok(None) => {
                 if !setup.sets.is_empty() {
                     bail!(
@@ -167,15 +163,15 @@ async fn add_one(
                         schema::FILE
                     );
                 }
-                Vec::new()
+                None
             }
             Err(err) => {
                 eprintln!("om: {name}: {err:#}; installing it with its defaults");
-                Vec::new()
+                None
             }
         }
     } else {
-        Vec::new()
+        None
     };
     let installed = fetch::install(&lib, &name, &fetched)?;
     println!(
@@ -184,7 +180,14 @@ async fn add_one(
         installed.display()
     );
     if rule {
+        let values = options
+            .as_ref()
+            .map(|(schema, resolved)| configure::to_write(schema, resolved))
+            .unwrap_or_default();
         write_rule(config_dir, &name, &description, &values, false, false)?;
+        if let Some((schema, resolved)) = &options {
+            print!("{}", configure::summary(&name, schema, resolved, setup));
+        }
     } else {
         print_use(&name);
     }
@@ -389,6 +392,34 @@ pub async fn remove(config_dir: &Path, name: &str, force: bool) -> Result<()> {
     .with_context(|| format!("removing {}", path.display()))?;
     println!("removed {name} ({})", path.display());
     drop_rule(config_dir, name);
+    Ok(())
+}
+
+/// `om plugin remove --all`: every plugin in `lib/`, with the rule files om
+/// wrote for them, to start over. Each goes through `remove`, so a plugin
+/// you changed, or one of your own with work nowhere else, stays unless
+/// `force`; rule files you wrote yourself are not touched.
+pub async fn remove_all(config_dir: &Path, force: bool) -> Result<()> {
+    let lib = config_dir.join("lib");
+    let plugins = installed(&lib).await?;
+    if plugins.is_empty() {
+        println!("no plugins in {}; nothing to remove", lib.display());
+        return Ok(());
+    }
+    let mut kept = Vec::new();
+    for plugin in &plugins {
+        if let Err(err) = remove(config_dir, &plugin.name, force).await {
+            eprintln!("om: {err:#}");
+            kept.push(plugin.name.clone());
+        }
+    }
+    if !kept.is_empty() {
+        bail!(
+            "kept {}: see above; `om plugin remove --all --force` removes them too",
+            kept.join(", ")
+        );
+    }
+    println!("removed every plugin; `om plugin available` lists the ones to start again with");
     Ok(())
 }
 

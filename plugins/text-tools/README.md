@@ -13,8 +13,8 @@ Snippets and selection transforms, no model involved.
 om plugin add text-tools
 ```
 
-It asks for its options as it installs (Enter keeps a default);
-`om plugin configure text-tools` changes them later. Both write
+It installs with its defaults and lists them; `om plugin configure text-tools`
+opens them as a form in your editor. Either way they are written to
 `~/.config/omaestro/rules.d/text-tools.lua`, which you can also edit.
 
 Your own snippets go in `~/.config/omaestro/rules.d/text-tools.lua`:

@@ -6,7 +6,8 @@
       "label": "Rewrite the selection",
       "default": "SUPER + ALT + J",
       "optional": true,
-      "description": "Replaces the selection with a corrected version. With the modes menu on, it is off unless you give it a chord of its own."
+      "description": "Replaces the selection with a corrected version.",
+      "unless": "modes"
     },
     {
       "key": "summarize",
@@ -46,13 +47,15 @@
       "key": "menu",
       "type": "chord",
       "label": "Open the modes menu",
-      "default": "SUPER + ALT + J"
+      "default": "SUPER + ALT + J",
+      "when": "modes"
     },
     {
       "key": "custom",
       "type": "bool",
       "label": "A custom-instruction row in the menu",
-      "default": true
+      "default": true,
+      "when": "modes"
     }
   ]
 }

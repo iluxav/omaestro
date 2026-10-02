@@ -16,8 +16,8 @@ lives in `om.store`, so it survives reloads and restarts.
 om plugin add clipboard
 ```
 
-It asks for its options as it installs (Enter keeps a default);
-`om plugin configure clipboard` changes them later. Both write
+It installs with its defaults and lists them; `om plugin configure clipboard`
+opens them as a form in your editor. Either way they are written to
 `~/.config/omaestro/rules.d/clipboard.lua`, which you can also edit.
 
 Options go in `~/.config/omaestro/rules.d/clipboard.lua`:

@@ -129,7 +129,6 @@ async fn plugins_by_name_come_from_a_directory_of_the_official_repository() {
         true,
         &official,
         &Setup::defaults(),
-        &mut |_| None,
     )
     .await
     .unwrap();
@@ -174,7 +173,6 @@ async fn plugins_by_name_come_from_a_directory_of_the_official_repository() {
         true,
         &official,
         &Setup::defaults(),
-        &mut |_| None,
     )
     .await
     .unwrap_err()
@@ -189,7 +187,6 @@ async fn plugins_by_name_come_from_a_directory_of_the_official_repository() {
         true,
         &official,
         &Setup::defaults(),
-        &mut |_| None,
     )
     .await
     .unwrap_err()
@@ -225,7 +222,6 @@ async fn update_follows_upstream_and_never_loses_your_edits_quietly() {
         false,
         &official,
         &Setup::defaults(),
-        &mut |_| None,
     )
     .await
     .unwrap();
@@ -307,7 +303,6 @@ async fn a_repository_root_a_tag_and_a_directory_on_disk() {
         false,
         &official,
         &Setup::defaults(),
-        &mut |_| None,
     )
     .await
     .unwrap();
@@ -333,7 +328,6 @@ async fn a_repository_root_a_tag_and_a_directory_on_disk() {
         true,
         &official,
         &Setup::defaults(),
-        &mut |_| None,
     )
     .await;
     assert!(err.is_err());
@@ -353,7 +347,6 @@ async fn a_repository_root_a_tag_and_a_directory_on_disk() {
         true,
         &official,
         &Setup::defaults(),
-        &mut |_| None,
     )
     .await
     .unwrap();
@@ -388,7 +381,6 @@ async fn a_plugin_needing_a_newer_om_is_refused() {
         true,
         &official(tmp.path()),
         &Setup::defaults(),
-        &mut |_| None,
     )
     .await;
     assert!(err.is_err());
@@ -514,7 +506,6 @@ async fn options_are_chosen_on_add_and_changed_with_configure() {
         true,
         &off,
         &setup,
-        &mut |_| None,
     )
     .await
     .unwrap();
@@ -522,15 +513,20 @@ async fn options_are_chosen_on_add_and_changed_with_configure() {
     assert!(text.contains("  chord = \"SUPER + CTRL + X\",\n"), "{text}");
     assert!(!text.contains("every"), "{text}");
 
-    // Configure in the terminal: Enter keeps the chord, `none` turns the timer off.
-    let mut answers = vec!["".to_string(), "none".to_string()].into_iter();
-    let ask_setup = Setup {
-        interactive: true,
-        ..Setup::defaults()
-    };
-    configure(&config, "clock", &ask_setup, &mut move |_| answers.next())
-        .await
-        .unwrap();
+    // Configure in the editor: the form shows both; turning the timer off is
+    // one edit, and what the form left alone stays.
+    let mut seen = String::new();
+    configure(&config, "clock", &Setup::defaults(), &mut |form: &str| {
+        seen = form.to_string();
+        Ok(form.replace("every = 1h", "every = none"))
+    })
+    .await
+    .unwrap();
+    assert!(seen.contains("\nchord = SUPER + CTRL + X\n"), "{seen}");
+    assert!(
+        seen.contains("# interval like 30s, 5m, 1h30m, optional; default: 1h\nevery = 1h\n"),
+        "{seen}"
+    );
     let text = std::fs::read_to_string(&rule_file).unwrap();
     assert!(
         text.contains("  chord = \"SUPER + CTRL + X\",\n  every = false,\n"),
@@ -540,20 +536,25 @@ async fn options_are_chosen_on_add_and_changed_with_configure() {
 
     // A rule with more in it is the owner's: configure refuses without --force.
     std::fs::write(&rule_file, format!("{text}om.log('mine')\n")).unwrap();
-    let err = configure(&config, "clock", &Setup::defaults(), &mut |_| None)
-        .await
-        .unwrap_err();
+    let err = configure(&config, "clock", &Setup::defaults(), &mut |f: &str| {
+        Ok(f.to_string())
+    })
+    .await
+    .unwrap_err();
     assert!(
         err.to_string().contains("has more in it than om writes"),
         "{err}"
     );
     let force = Setup {
         force: true,
+        sets: vec![("every".into(), "2h".into())],
         ..Setup::defaults()
     };
-    configure(&config, "clock", &force, &mut |_| None)
-        .await
-        .unwrap();
+    configure(&config, "clock", &force, &mut |_: &str| {
+        unreachable!("--set needs no form")
+    })
+    .await
+    .unwrap();
     assert!(
         !std::fs::read_to_string(&rule_file)
             .unwrap()
@@ -571,19 +572,60 @@ async fn options_are_chosen_on_add_and_changed_with_configure() {
         true,
         &off,
         &setup,
-        &mut |_| None,
     )
     .await
     .unwrap_err();
     assert!(err.to_string().contains("not installed: "), "{err}");
     assert!(!config.join("lib/plain").exists());
     assert!(
-        configure(&config, "nope", &Setup::defaults(), &mut |_| None)
-            .await
-            .is_err()
+        configure(&config, "nope", &Setup::defaults(), &mut |f: &str| Ok(
+            f.to_string()
+        ))
+        .await
+        .is_err()
     );
 
     // Removing the plugin takes its generated rule, options and all.
     remove(&config, "clock", false).await.unwrap();
     assert!(!rule_file.exists());
+}
+
+#[tokio::test]
+async fn remove_all_starts_over_but_keeps_what_would_be_lost() {
+    let tmp = TempDir::new("plugins-remove-all");
+    let config = tmp.path().join("config");
+    let off = official(tmp.path());
+    for name in ["one", "two"] {
+        let dir = tmp.path().join("work").join(name);
+        plugin_files(&dir, name, "A plugin.");
+        add(
+            &config,
+            &[dir.to_string_lossy().to_string()],
+            None,
+            None,
+            true,
+            &off,
+            &Setup::defaults(),
+        )
+        .await
+        .unwrap();
+    }
+    // A rule of the user's own stays; so does a plugin they changed.
+    write(
+        &config.join("rules.d/mine.lua"),
+        "om.trigger('x', function() end)\n",
+    );
+    write(&config.join("lib/two/init.lua"), "-- changed\nreturn {}\n");
+    let err = remove_all(&config, false).await.unwrap_err().to_string();
+    assert!(err.contains("kept two"), "{err}");
+    assert!(!config.join("lib/one").exists() && !config.join("rules.d/one.lua").exists());
+    assert!(config.join("lib/two").exists() && config.join("rules.d/two.lua").exists());
+    remove_all(&config, true).await.unwrap();
+    assert!(installed(&config.join("lib")).await.unwrap().is_empty());
+    assert!(!config.join("rules.d/two.lua").exists());
+    assert!(
+        config.join("rules.d/mine.lua").exists(),
+        "the user's own rule is not a plugin's"
+    );
+    remove_all(&config, false).await.unwrap();
 }

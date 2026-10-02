@@ -149,23 +149,17 @@ enum PluginCommand {
         /// Only install; do not write rules.d/NAME.lua
         #[arg(long)]
         no_rule: bool,
-        /// An option, without asking (repeatable): --set chord="SUPER + ALT + P"
+        /// An option instead of its default (repeatable): --set chord="SUPER + ALT + P"
         #[arg(long, value_name = "KEY=VALUE")]
         set: Vec<String>,
-        /// Take every option's default without asking
-        #[arg(long)]
-        defaults: bool,
     },
-    /// Change an installed plugin's options (from its plugin.json); they are
-    /// written into rules.d/NAME.lua
+    /// Change an installed plugin's options: a form in $EDITOR (from its
+    /// plugin.json), or --set; written into rules.d/NAME.lua
     Configure {
         name: String,
-        /// An option, without asking (repeatable)
+        /// Set an option without the form (repeatable)
         #[arg(long, value_name = "KEY=VALUE")]
         set: Vec<String>,
-        /// Ask nothing: apply --set and keep the rest
-        #[arg(long)]
-        defaults: bool,
         /// Replace a rule file om did not write
         #[arg(long)]
         force: bool,
@@ -198,7 +192,11 @@ enum PluginCommand {
     },
     /// Delete a plugin from lib/, and the rule `add` wrote for it
     Remove {
-        name: String,
+        #[arg(required_unless_present = "all", conflicts_with = "all")]
+        name: Option<String>,
+        /// Every installed plugin, and the rule files om wrote for them
+        #[arg(long)]
+        all: bool,
         /// Even with changes or unpushed work in it
         #[arg(long)]
         force: bool,
@@ -283,9 +281,8 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                     path,
                     no_rule,
                     set,
-                    defaults,
                 } => {
-                    let setup = plugins::Setup::from_cli(&set, defaults, false).await?;
+                    let setup = plugins::Setup::from_cli(&set, false).await?;
                     plugins::add(
                         &config_dir,
                         &what,
@@ -294,18 +291,13 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                         !no_rule,
                         &official,
                         &setup,
-                        &mut plugins::ask_stdin,
                     )
                     .await?
                 }
-                PluginCommand::Configure {
-                    name,
-                    set,
-                    defaults,
-                    force,
-                } => {
-                    let setup = plugins::Setup::from_cli(&set, defaults, force).await?;
-                    plugins::configure(&config_dir, &name, &setup, &mut plugins::ask_stdin).await?
+                PluginCommand::Configure { name, set, force } => {
+                    let setup = plugins::Setup::from_cli(&set, force).await?;
+                    plugins::configure(&config_dir, &name, &setup, &mut plugins::edit_in_editor)
+                        .await?
                 }
                 PluginCommand::Available => plugins::available(&config_dir, &official).await?,
                 PluginCommand::List { json } => plugins::list(&lib, json).await?,
@@ -317,9 +309,10 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                 PluginCommand::Update { name, force } => {
                     plugins::update(&lib, name.as_deref(), force, &official).await?
                 }
-                PluginCommand::Remove { name, force } => {
-                    plugins::remove(&config_dir, &name, force).await?
-                }
+                PluginCommand::Remove { name, all, force } => match name {
+                    Some(name) if !all => plugins::remove(&config_dir, &name, force).await?,
+                    _ => plugins::remove_all(&config_dir, force).await?,
+                },
             }
         }
     }
@@ -385,7 +378,6 @@ async fn daemon(socket: &Path, config_dir: Option<PathBuf>, foreground: bool) ->
                     true,
                     &official,
                     &plugins::Setup::defaults(),
-                    &mut |_| None,
                 )
                 .await
                 .map_err(|err| format!("{err:#}"))

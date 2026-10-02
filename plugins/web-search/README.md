@@ -12,8 +12,8 @@ nothing. The query is percent-encoded and appended to the search URL.
 om plugin add web-search
 ```
 
-It asks for its options as it installs (Enter keeps a default);
-`om plugin configure web-search` changes them later. Both write
+It installs with its defaults and lists them; `om plugin configure web-search`
+opens them as a form in your editor. Either way they are written to
 `~/.config/omaestro/rules.d/web-search.lua`, which you can also edit.
 
 Another engine, in `~/.config/omaestro/rules.d/web-search.lua`:
