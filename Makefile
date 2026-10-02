@@ -1,7 +1,7 @@
 # The repo's tasks in one place. Cargo does the building; the scripts do the
 # procedures (a live smoke test, a release, the plugin's start-up).
 
-.PHONY: build build-release test lint check smoke smoke-press install uninstall plugin plugin-reload plugin-remove release release-dry preview dist clean
+.PHONY: build build-release test lint check smoke smoke-press install uninstall install-systemd uninstall-systemd plugin plugin-reload plugin-remove release release-dry preview dist clean
 
 PLUGIN_ID = io.github.iluxav.omaestro
 PLUGIN_LINK = $(HOME)/.config/omarchy/plugins/$(PLUGIN_ID)
@@ -27,18 +27,20 @@ smoke:            ## live checks in a nested Hyprland (run inside a session)
 smoke-press:      ## the same, plus a hotkey you press by hand
 	scripts/smoke.sh --press
 
-install:          ## om into ~/.cargo/bin and the systemd user unit, enabled
+install:          ## this checkout installed as a user gets it from the marketplace (plugin copied in, icon in the bar, daemon run by the plugin)
+	scripts/user-install.sh install
+
+uninstall:        ## everything an install leaves (and the older setups); config and state moved to ~/.config/omaestro-backup-<time>
+	scripts/user-install.sh uninstall
+
+install-systemd:  ## the developer setup, om into ~/.cargo/bin and the systemd user unit, (re)started
 	cargo install --path .
 	install -Dm644 systemd/omaestro.service $(HOME)/.config/systemd/user/omaestro.service
 	systemctl --user daemon-reload
 	systemctl --user enable omaestro
 	systemctl --user restart omaestro
-	@echo
-	@echo "omaestro is running. Plugins to start with:"
-	@echo "  om plugin available                              what there is"
-	@echo "  om plugin add panel window-halves text-tools      the starter set (SUPER+ALT+O opens the panel)"
 
-uninstall:        ## the reverse; your rules in ~/.config/omaestro stay
+uninstall-systemd: ## the reverse; your rules in ~/.config/omaestro stay
 	-systemctl --user disable --now omaestro
 	rm -f $(HOME)/.config/systemd/user/omaestro.service
 	systemctl --user daemon-reload

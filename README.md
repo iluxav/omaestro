@@ -59,24 +59,40 @@ omarchy plugin add https://github.com/iluxav/omaestro --enable
 The plugin's service downloads the `om` binary for your CPU from this
 repository's releases, checks it against the SHA256 pinned in the plugin,
 links it as `~/.local/bin/om` so the command is in your terminal, and keeps
-the daemon running while you are logged in. On its first start it offers
-the starter plugins in a notification, one click. Or from a terminal:
+the daemon running while you are logged in. The omaestro mark (om) sits in
+the bar: a click opens the rules panel, a right click reloads the rules, and
+it turns red when the rules did not load or override is on. SUPER+ALT+O
+opens the panel too (a line in the `init.lua` omaestro writes on its first
+start). That first start also offers the starter plugins in a notification,
+one click. Or from a terminal:
 
 ```sh
-om status                                       # the daemon, who runs it, what is loaded
-om plugin add panel window-halves text-tools    # the starter set; SUPER+ALT+O opens the rules panel
+om status                                 # the daemon, who runs it, what is loaded
+om plugin add window-halves text-tools    # the starter set
 ```
+
+Installed the plugin before the bar icon existed? It was recorded as a
+plain plugin, so the bar does not show it yet: `omarchy plugin disable
+io.github.iluxav.omaestro && omarchy plugin enable io.github.iluxav.omaestro`
+puts it in the bar (the daemon restarts once). For the chord, add
+`om.hotkey("SUPER + ALT + O", om.panel)` to `~/.config/omaestro/init.lua`,
+or keep the `panel` plugin if you have it (not both: one chord, one rule).
 
 ### From source
 
 ```sh
 git clone https://github.com/iluxav/omaestro && cd omaestro
-make install           # cargo install → ~/.cargo/bin/om, plus a systemd user unit, started
+make install           # this checkout as the Omarchy plugin, the way the marketplace installs it
 om status
 ```
 
-Either way, one daemon per session; the plugin does not start a second one
-when the unit's is already answering.
+`make install` builds the binary and installs the plugin from your checkout
+with `omarchy plugin add`, exactly as a user gets it (icon in the bar,
+daemon run by the plugin, a fresh `~/.config/omaestro` on a first start);
+only the download is skipped. `make install-systemd` is the other way: `om`
+in `~/.cargo/bin` and a systemd user unit, without the plugin. Either way,
+one daemon per session; the plugin does not start a second one when the
+unit's is already answering.
 
 Requirements: Omarchy (or any Arch setup with Hyprland 0.56 or newer, on
 Wayland). `om doctor` checks the tools it uses (`hyprctl`, `wl-paste`,
@@ -94,7 +110,7 @@ small Lua module with options; install one and it works right away:
 ```sh
 om plugin available                           # the list, fresh from GitHub, and which are installed
 om plugin add window-halves                   # into ~/.config/omaestro/lib/, plus rules.d/window-halves.lua
-om plugin add panel window-halves text-tools  # several at once: the starter set
+om plugin add window-halves text-tools        # several at once: the starter set
 ```
 
 | Plugin | What it does |
@@ -110,7 +126,7 @@ om plugin add panel window-halves text-tools  # several at once: the starter set
 | `web-search` | SUPER+ALT+I asks for a query and opens it in the browser |
 | `system-events` | notifications on wake, USB devices and a low battery; network changes in the journal |
 | `downloads` | a notification when something lands in `~/Downloads` |
-| `panel` | SUPER+ALT+O opens the rules panel of the Omarchy plugin |
+| `panel` | SUPER+ALT+O opens the rules panel; only for configs from before `init.lua` had that line |
 
 `om plugin add` installs a plugin with its defaults and shows them in a
 small table, flagging any chord that Hyprland or another rule already uses.
@@ -279,8 +295,8 @@ plugins from people you trust, as you would a Hammerspoon Spoon.
 
 ## The panel
 
-With the Omarchy plugin, `om panel` (or SUPER+ALT+O after `om plugin add
-panel`) opens a panel in the shell: every rule with a switch, grouped by the
+With the Omarchy plugin, the omaestro icon in the bar, SUPER+ALT+O or
+`om panel` opens a panel in the shell: every rule with a switch, grouped by the
 file or plugin it comes from; an app hotkey says which app and whether it is
 bound right now; the override switch above them, red while it is on; and a
 reload button.
@@ -404,6 +420,7 @@ om.menu("SUPER + ALT + P", {                 -- a chord that opens a menu of nam
 }, {title = "Do", selection = false, refocus = true, remember = true})
                                                  -- ctx = {window, selection}, taken before the menu opens;
                                                  -- items may be a function(ctx) returning the list (nil: no menu)
+om.hotkey("SUPER + ALT + O", om.panel)           -- om.panel() opens or closes the rules panel
 om.on_typed(":sig", fn)                          -- the text is erased, then fn runs
 om.trigger("name", fn)                           -- `om trigger name`
 
@@ -462,7 +479,7 @@ om.use("name", "you/repo")                       -- require from lib/, cloning t
 make check          # fmt, clippy, tests; no display or Hyprland needed
 make smoke          # live checks in a nested Hyprland, run inside your session
 make plugin         # link this checkout into the Omarchy shell as the plugin
-make plugin-reload  # after editing Panel.qml or Service.qml (restarts the shell)
+make plugin-reload  # after editing Panel.qml, Widget.qml or Service.qml (restarts the shell)
 ```
 
 `scripts/smoke.sh` never touches your Hyprland: everything that binds keys,
@@ -488,9 +505,16 @@ you). The Omarchy plugin downloads the binary of the version in
 
 ```sh
 omarchy plugin remove io.github.iluxav.omaestro   # the plugin, if installed that way
-make uninstall                                    # the unit and ~/.cargo/bin/om, if built from source
 rm -rf ~/.local/share/omaestro ~/.local/bin/om    # the downloaded binary and its link
 rm -rf ~/.config/omaestro ~/.local/state/omaestro # your rules and state, only if you want them gone
+```
+
+From a checkout, `make uninstall` does all of it (and removes the systemd
+unit and `~/.cargo/bin/om` of `make install-systemd`), moving your rules and
+state to `~/.config/omaestro-backup-<time>` instead of deleting them:
+
+```sh
+make uninstall && make install                    # start over like a new machine
 ```
 
 ## License

@@ -153,8 +153,10 @@ the user's `rules.d/<name>.lua`, never in its code.
 
 ## Panel and lifecycle
 
-`om panel` (or SUPER+ALT+O with the `panel` plugin) opens the Omarchy
-panel: every rule with a switch, the override switch, a reload button.
+`om panel`, the omaestro icon in the bar, or SUPER+ALT+O (the line
+`om.hotkey("SUPER + ALT + O", om.panel)` in a new config's `init.lua`)
+opens the Omarchy panel: every rule with a switch, the override switch, a
+reload button.
 `om disable <id>` / `om enable <id>` do the same from the terminal.
 `om start`, `om stop`, `om restart` drive the daemon (systemd unit or the
 Omarchy plugin's service).

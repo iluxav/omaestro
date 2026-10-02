@@ -3,6 +3,11 @@
 SUPER+ALT+O opens and closes the rules panel of the Omarchy plugin: every
 rule with a switch, the override switch, and a reload button.
 
+A config omaestro creates now has this in its `init.lua` already
+(`om.hotkey("SUPER + ALT + O", om.panel)`), and the omaestro icon in the bar
+opens the panel too. This plugin is for configs from before that; do not
+use both, a chord takes one rule.
+
 The panel exists when omaestro is installed as the Omarchy plugin
 (`omarchy plugin add ...`). The same command, `omarchy-shell shell toggle
 io.github.iluxav.omaestro`, works from a bind in `~/.config/hypr/bindings.lua`

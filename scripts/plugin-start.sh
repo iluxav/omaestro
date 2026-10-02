@@ -3,7 +3,7 @@
 # becomes the daemon. Nothing is compiled.
 #
 # The binary is OMAESTRO_BIN when set; else `om` on PATH (a build you
-# installed yourself, `make install`); else the release binary, downloaded
+# installed yourself, `make install-systemd`); else the release binary, downloaded
 # once into ~/.local/share/omaestro with its SHA256 checked against
 # release.sha256 next to this script's parent.
 
@@ -19,7 +19,7 @@ download=0
 if [[ -n "${OMAESTRO_BIN:-}" ]]; then
   bin="$OMAESTRO_BIN"
 elif on_path="$(command -v om 2>/dev/null)" && [[ "$(readlink -f "$on_path")" != "$bin_dir/"* ]]; then
-  # A build you installed yourself (`cargo install`, `make install`).
+  # A build you installed yourself (`cargo install`, `make install-systemd`).
   bin="$on_path"
 else
   # Ours: downloaded once per version, and linked as ~/.local/bin/om below.

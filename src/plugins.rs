@@ -41,9 +41,9 @@ pub fn rule_text_for_tests(
     rule::rule_text(name, description, values)
 }
 
-/// The plugins of omaestro's own repository a fresh install offers in one
-/// click (see `welcome`), and `make install` suggests.
-pub const STARTERS: [&str; 3] = ["panel", "window-halves", "text-tools"];
+/// The plugins of omaestro's own repository that a fresh install offers in
+/// one click (see `welcome`).
+pub const STARTERS: [&str; 2] = ["window-halves", "text-tools"];
 
 /// The Lua variable a rule would hold the plugin in: `om-window-halves`
 /// becomes `window_halves`.

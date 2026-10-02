@@ -374,6 +374,20 @@ ShellRoot {
     source: "file://$PWD/Panel.qml"
     onLoaded: item.open("{}")
   }
+  // The bar icon, alone in a strip at the top (no bar host: it is not
+  // clickable here, its state and tooltip are what is checked).
+  PanelWindow {
+    anchors { top: true; left: true; right: true }
+    implicitHeight: 32
+    color: "#202020"
+    Loader {
+      id: widget
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      height: 32
+      source: "file://$PWD/Widget.qml"
+    }
+  }
   IpcHandler {
     target: "smoke"
     function rules(): string {
@@ -389,6 +403,7 @@ ShellRoot {
     function setOverride(on: bool): void { panel.item.setOverride(on) }
     function override(): bool { return panel.item.overrideOn }
     function askOverride(): void { panel.item.askOverride() }
+    function widget(): string { return widget.item ? widget.item.tooltip + "|" + widget.item.attention : "" }
     function cancelOverride(): void { panel.item.cancelOverride() }
   }
 }
@@ -402,6 +417,8 @@ EOF
   for _ in $(seq 150); do panel_rules "app_hotkey:CTRL+S:class=^smoke%-panel$=true,hotkey:SUPER+ALT+J=true" && { shown=1; break; }; sleep 0.1; done
   if [[ "$shown" == 1 ]]; then
     pass "the panel loads with the shell's components and lists the hotkey"
+    widget_says() { [[ "$(panel_ipc widget)" == "$1" ]]; }
+    wait_for "the bar icon loads and counts the rules" widget_says "omaestro: 2 rules|false"
     if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
       mkdir -p "$SMOKE_SHOTS"
       in_nested grim "$SMOKE_SHOTS/panel-on.png" && echo "      screenshot: $SMOKE_SHOTS/panel-on.png"
@@ -429,6 +446,8 @@ EOF
     panel_ipc setOverride true >/dev/null
     override_is() { [[ "$(panel_ipc override)" == "$1" ]]; }
     wait_for "the override switch turns it on" override_is true
+    wait_for "and the bar icon asks for attention" widget_says "omaestro: 2 rules
+override is on: rules take chords Hyprland already has|true"
     if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
       sleep 0.5
       in_nested grim "$SMOKE_SHOTS/panel-override-on.png" && echo "      screenshot: $SMOKE_SHOTS/panel-override-on.png"

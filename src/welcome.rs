@@ -19,9 +19,13 @@ pub const INIT_LUA: &str = r#"-- omaestro: your rules. This file loads first, th
 -- order. Saving any of them reloads the rules; a mistake shows up as a
 -- notification with the file and line, and the previous rules keep running.
 --
+-- The rules panel: every rule with a switch, the override switch, reload.
+-- The omaestro icon in the bar opens it too.
+om.hotkey("SUPER + ALT + O", om.panel)
+
 -- Plugins to start with:
 --   om plugin available                              what there is
---   om plugin add panel window-halves text-tools      the starter set
+--   om plugin add window-halves text-tools           the starter set
 --
 -- A rule of your own:
 --
@@ -55,9 +59,9 @@ where
         ("later".to_string(), "Not now".to_string()),
     ];
     let body = format!(
-        "Install the starter plugins ({})? They add SUPER+ALT+O for the rules panel, \
-         CTRL+ALT+arrows for window halves and SUPER+ALT+D for today's date. \
-         Later: om plugin available",
+        "SUPER+ALT+O or the omaestro icon in the bar opens the rules panel. \
+         Install the starter plugins ({})? They add CTRL+ALT+arrows for window \
+         halves and SUPER+ALT+D for today's date. Later: om plugin available",
         STARTERS.join(", ")
     );
     let answer = match notifier
@@ -77,7 +81,7 @@ where
     let (title, body) = match install(names).await {
         Ok(()) => (
             "omaestro",
-            "Starter plugins installed: SUPER+ALT+O opens the rules panel".to_string(),
+            "Starter plugins installed: SUPER+ALT+O shows them in the rules panel".to_string(),
         ),
         Err(err) => (
             "omaestro",
@@ -115,7 +119,7 @@ mod tests {
     #[tokio::test]
     async fn yes_installs_the_starters_and_says_so() {
         let (notifier, names) = run("starter", Ok(())).await;
-        assert_eq!(names.unwrap(), ["panel", "window-halves", "text-tools"]);
+        assert_eq!(names.unwrap(), ["window-halves", "text-tools"]);
         let asked = notifier.asked();
         assert_eq!(asked.len(), 1);
         assert_eq!(asked[0].0, "omaestro is running");
@@ -124,7 +128,7 @@ mod tests {
             notifier.sent(),
             [(
                 "omaestro".to_string(),
-                "Starter plugins installed: SUPER+ALT+O opens the rules panel".to_string()
+                "Starter plugins installed: SUPER+ALT+O shows them in the rules panel".to_string()
             )]
         );
     }
@@ -151,7 +155,7 @@ mod tests {
         assert!(
             sent[0]
                 .1
-                .ends_with("om plugin add panel window-halves text-tools")
+                .ends_with("om plugin add window-halves text-tools")
         );
     }
 

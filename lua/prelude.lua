@@ -178,3 +178,10 @@ function om.menu(chord, items, opts)
     end
   end)
 end
+
+-- om.panel(): opens or closes the rules panel of the Omarchy plugin, the
+-- way `om panel` does. One line in init.lua gives it a chord:
+--   om.hotkey("SUPER + ALT + O", om.panel)
+function om.panel()
+  om.spawn("omarchy-shell shell toggle io.github.iluxav.omaestro")
+end

@@ -26,8 +26,10 @@ jobs:
           python3 - <<'EOF'
           import json, os, sys
           m = json.load(open("manifest.json"))
-          assert m["kinds"] == ["service", "panel"], m["kinds"]
-          assert os.path.isfile(m["entryPoints"]["service"]) and os.path.isfile(m["entryPoints"]["panel"])
+          assert m["kinds"] == ["service", "panel", "bar-widget"], m["kinds"]
+          for entry in ("service", "panel", "barWidget"):
+              assert os.path.isfile(m["entryPoints"][entry]), entry
+          assert m["barWidget"]["defaultSection"] in ("left", "center", "right")
           print(m["id"], m["version"])
           EOF
           for d in plugins/*/; do

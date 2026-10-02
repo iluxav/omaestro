@@ -1,4 +1,4 @@
-//! `om.menu`: a chord, a menu of named actions, the last one first.
+//! `om.menu` and `om.panel`, the prelude helpers.
 
 use super::*;
 
@@ -145,5 +145,21 @@ async fn bad_items_are_reported_at_the_rule() {
     assert_eq!(
         h.errors(),
         ["rules.d/m.lua:1: om.menu: item 1 needs a label and a function"]
+    );
+}
+
+#[tokio::test]
+async fn the_init_lua_of_a_new_config_opens_the_panel_on_its_chord() {
+    let h = Harness::start(&[("init.lua", crate::welcome::INIT_LUA)]).await;
+    assert!(h.errors().is_empty(), "{:?}", h.errors());
+    assert!(h.trigger("hotkey:SUPER+ALT+O").await.ok);
+    h.settle().await;
+    assert!(
+        h.fakes
+            .journal
+            .entries()
+            .contains(&"spawn omarchy-shell shell toggle io.github.iluxav.omaestro".to_string()),
+        "{:?}",
+        h.fakes.journal.entries()
     );
 }

@@ -116,7 +116,7 @@ pub async fn unit_hint() -> String {
             state => format!("{unit} is {state}; `om start` starts it"),
         },
         _ => format!(
-            "no systemd unit {unit} (`make install` adds it); or run `om daemon --foreground`"
+            "no systemd unit {unit} (`make install-systemd` adds it); or run `om daemon --foreground`"
         ),
     }
 }
@@ -179,7 +179,7 @@ pub async fn start(socket: &Path) -> Result<()> {
     let unit = unit_name();
     if unit_load_state(&unit).await != "loaded" {
         bail!(
-            "no systemd unit {unit}. Install it with `make install` (or copy \
+            "no systemd unit {unit}. Install it with `make install-systemd` (or copy \
              systemd/omaestro.service to ~/.config/systemd/user and `systemctl --user \
              enable --now omaestro`), enable the Omarchy plugin, or run `om daemon --foreground`"
         );
@@ -277,7 +277,7 @@ pub async fn restart(socket: &Path) -> Result<()> {
             }
             bail!(
                 "stopped pid {old}; nothing supervised it, so start it again where it ran \
-                 (`om daemon --foreground`), or `make install` for the systemd unit"
+                 (`om daemon --foreground`), or `make install-systemd` for the systemd unit"
             );
         }
     }

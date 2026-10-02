@@ -6,7 +6,22 @@
   "author": "iluxav",
   "license": "MIT",
   "description": "Hammerspoon for Hyprland: Lua rules for hotkeys, focus, timers, selection and a local model.",
-  "kinds": ["service", "panel"],
+  "kinds": [
+    "service",
+    "panel",
+    "bar-widget"
+  ],
   "keepLoaded": true,
-  "entryPoints": { "service": "Service.qml", "panel": "Panel.qml" }
+  "entryPoints": {
+    "service": "Service.qml",
+    "panel": "Panel.qml",
+    "barWidget": "Widget.qml"
+  },
+  "barWidget": {
+    "displayName": "omaestro",
+    "description": "Opens the omaestro rules panel; right click reloads the rules.",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
 }
