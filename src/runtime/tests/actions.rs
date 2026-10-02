@@ -213,6 +213,36 @@ async fn the_ai_text_plugin_rewrites_the_selection_in_place() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn the_ai_text_plugin_keeps_the_whitespace_around_the_selection() {
+    let h = Harness::start(&[]).await;
+    h.install_builtin("ai-text");
+    assert!(
+        h.save(&[("rules.d/ai.lua", "om.use('ai-text').setup({})")])
+            .await
+            .ok
+    );
+    h.fakes.hypr.set_window("com.mitchellh.ghostty", "omanote");
+    // A whole line selected with Shift+Down: it ends in its newline.
+    h.fakes.clipboard.select("  me wants cofee now\n");
+    h.fakes.llm.answer("\"I would like a coffee now.\"");
+
+    assert!(h.trigger("hotkey:SUPER+ALT+J").await.ok);
+    h.settle().await;
+
+    assert!(h.errors().is_empty(), "{:?}", h.errors());
+    let journal = h.fakes.journal.entries();
+    assert!(
+        journal.contains(&r#"clipboard = text/plain "  I would like a coffee now.\n""#.to_string()),
+        "{journal:?}"
+    );
+    // Ghostty pastes with the terminal chord.
+    assert!(
+        journal.contains(&"key CTRL+SHIFT+V".to_string()),
+        "{journal:?}"
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_ai_text_plugin_asks_for_a_model_when_the_configured_one_is_not_installed() {
     let config = "choose_command = \"pick {label} {options}\"\n";
     let h = Harness::start(&[]).await;

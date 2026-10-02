@@ -79,10 +79,14 @@ local function selection()
   return text
 end
 
--- Some models quote their answer anyway.
-local function unquote(text)
-  text = text:trim()
-  return text:match('^"(.*)"$') or text
+-- What goes in place of `selected`: the answer, unquoted (some models
+-- quote it anyway), with the whitespace the selection had around it. A
+-- line selected with Shift+Down ends in its newline, which the model
+-- leaves out; without it, the next line would join this one.
+local function replacement(selected, answer)
+  answer = answer:trim()
+  answer = answer:match('^"(.*)"$') or answer
+  return selected:match("^%s*") .. answer .. selected:match("%s*$")
 end
 
 -- { "label", "instruction", show = true } -> { label, instruction, show }
@@ -175,7 +179,7 @@ function M.setup(opts)
       if ctx.window then
         ctx.window:focus()
       end
-      om.paste(unquote(answer))
+      om.paste(replacement(ctx.selection, answer))
     end
 
     local items = {}
@@ -220,7 +224,7 @@ function M.setup(opts)
       if text then
         local answer = ask(text, M.prompts.rewrite)
         if answer then
-          om.paste(unquote(answer))
+          om.paste(replacement(text, answer))
         end
       end
     end, { label = "Rewrite the selection" })
@@ -249,7 +253,7 @@ function M.setup(opts)
       if text then
         local answer = ask(text, system, "Translating to " .. language .. "…")
         if answer then
-          om.paste(unquote(answer))
+          om.paste(replacement(text, answer))
         end
       end
     end, { label = "Translate to " .. language })
