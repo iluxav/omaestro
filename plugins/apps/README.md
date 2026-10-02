@@ -10,7 +10,7 @@ Bring an app to the front or start it, and arrange a desk with one chord.
 ## Install
 
 ```sh
-om plugin add apps
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/apps
 ```
 
 Its options are Lua tables, so they go in

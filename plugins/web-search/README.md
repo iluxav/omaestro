@@ -9,12 +9,14 @@ nothing. The query is percent-encoded and appended to the search URL.
 ## Install
 
 ```sh
-om plugin add web-search
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/web-search
 ```
 
-It installs with its defaults and lists them; `om plugin configure web-search`
-opens them as a form in your editor. Either way they are written to
-`~/.config/omaestro/rules.d/web-search.lua`, which you can also edit.
+It installs with its defaults and lists them; `--set key=value` after
+the URL (once per option) installs it with yours instead, and
+`om plugin configure web-search` opens them as a form in your editor.
+Either way they are written to `~/.config/omaestro/rules.d/web-search.lua`,
+which you can also edit.
 
 Another engine, in `~/.config/omaestro/rules.d/web-search.lua`:
 

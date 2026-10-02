@@ -12,12 +12,14 @@ other rules.
 ## Install
 
 ```sh
-om plugin add window-rules
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/window-rules
 ```
 
-It installs with its defaults and lists them; `om plugin configure window-rules`
-opens them as a form in your editor. Either way they are written to
-`~/.config/omaestro/rules.d/window-rules.lua`, which you can also edit.
+It installs with its defaults and lists them; `--set key=value` after
+the URL (once per option) installs it with yours instead, and
+`om plugin configure window-rules` opens them as a form in your editor.
+Either way they are written to `~/.config/omaestro/rules.d/window-rules.lua`,
+which you can also edit.
 
 Rules go in `~/.config/omaestro/rules.d/window-rules.lua`:
 

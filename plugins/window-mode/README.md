@@ -18,12 +18,14 @@ keybindings menu like any other bind.
 ## Install
 
 ```sh
-om plugin add window-mode
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/window-mode
 ```
 
-It installs with its defaults and lists them; `om plugin configure window-mode`
-opens them as a form in your editor. Either way they are written to
-`~/.config/omaestro/rules.d/window-mode.lua`, which you can also edit.
+It installs with its defaults and lists them; `--set key=value` after
+the URL (once per option) installs it with yours instead, and
+`om plugin configure window-mode` opens them as a form in your editor.
+Either way they are written to `~/.config/omaestro/rules.d/window-mode.lua`,
+which you can also edit.
 
 Options go in `~/.config/omaestro/rules.d/window-mode.lua`:
 

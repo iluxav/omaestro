@@ -213,6 +213,70 @@ async fn the_ai_text_plugin_rewrites_the_selection_in_place() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn the_ai_text_plugin_asks_for_a_model_when_the_configured_one_is_not_installed() {
+    let config = "choose_command = \"pick {label} {options}\"\n";
+    let h = Harness::start(&[]).await;
+    h.install_builtin("ai-text");
+    assert!(
+        h.save(&[
+            ("omaestro.toml", config),
+            ("rules.d/ai.lua", "om.use('ai-text').setup({})")
+        ])
+        .await
+        .ok
+    );
+    h.fakes.hypr.set_window("firefox", "Compose");
+    h.fakes.clipboard.select("me wants cofee now");
+    h.fakes.llm.fail(
+        "model endpoint 127.0.0.1:11434 answered 404: model 'llama3.2' not found; pull it with \
+         `ollama pull llama3.2` or set the model name in omaestro.toml",
+    );
+    h.fakes.http.answer(crate::backend::HttpResponse {
+        status: 200,
+        headers: vec![("content-type".to_string(), "application/json".to_string())],
+        body: r#"{"models": [{"name": "llama3.2:3b"}, {"name": "qwen3:8b"}]}"#.to_string(),
+    });
+    h.fakes.shell.answer("qwen3:8b\n");
+
+    assert!(h.trigger("hotkey:SUPER+ALT+J").await.ok);
+    h.settle().await;
+
+    let asked = h.fakes.http.requests();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].url, "http://127.0.0.1:11434/api/tags");
+    assert!(
+        h.fakes.journal.entries().contains(
+            &"sh pick 'Model (llama3.2 is not installed)' 'llama3.2:3b' 'qwen3:8b'".to_string()
+        ),
+        "{:?}",
+        h.fakes.journal.entries()
+    );
+    // The same text again, with the picked model; the fake still fails.
+    let requests = h.fakes.llm.requests();
+    assert_eq!(requests.len(), 2);
+    assert_eq!(requests[0].model, "llama3.2");
+    assert_eq!(requests[1].model, "qwen3:8b");
+    assert_eq!(requests[1].prompt, "me wants cofee now");
+
+    // Kept: the next press uses it without asking.
+    h.fakes.llm.answer("I would like a coffee now.");
+    assert!(h.events.send(Event::SelectionChanged).await.is_ok());
+    h.fakes.clipboard.select("me wants cofee now");
+    assert!(h.trigger("hotkey:SUPER+ALT+J").await.ok);
+    h.settle().await;
+    let requests = h.fakes.llm.requests();
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[2].model, "qwen3:8b");
+    assert_eq!(h.fakes.http.requests().len(), 1);
+    assert!(
+        h.fakes
+            .journal
+            .entries()
+            .contains(&r#"clipboard = text/plain "I would like a coffee now.""#.to_string())
+    );
+}
+
+#[tokio::test(start_paused = true)]
 async fn the_ai_text_modes_menu_applies_the_picked_mode_and_remembers_it() {
     let config = "choose_command = \"pick {label} {options}\"\nprompt_command = \"ask {label}\"\n";
     let h = Harness::start(&[]).await;

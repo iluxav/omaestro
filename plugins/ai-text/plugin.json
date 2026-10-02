@@ -34,7 +34,7 @@
       "type": "string",
       "label": "Model",
       "optional": true,
-      "description": "A model name for every chord; none uses the one in omaestro.toml."
+      "description": "A model name for every chord (`ollama list` shows yours). None: the one in omaestro.toml; when that one is not installed, the first chord asks which to use."
     },
     {
       "key": "modes",

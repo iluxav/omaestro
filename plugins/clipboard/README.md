@@ -13,12 +13,14 @@ lives in `om.store`, so it survives reloads and restarts.
 ## Install
 
 ```sh
-om plugin add clipboard
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/clipboard
 ```
 
-It installs with its defaults and lists them; `om plugin configure clipboard`
-opens them as a form in your editor. Either way they are written to
-`~/.config/omaestro/rules.d/clipboard.lua`, which you can also edit.
+It installs with its defaults and lists them; `--set key=value` after
+the URL (once per option) installs it with yours instead, and
+`om plugin configure clipboard` opens them as a form in your editor.
+Either way they are written to `~/.config/omaestro/rules.d/clipboard.lua`,
+which you can also edit.
 
 Options go in `~/.config/omaestro/rules.d/clipboard.lua`:
 

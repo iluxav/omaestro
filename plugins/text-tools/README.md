@@ -10,12 +10,14 @@ Snippets and selection transforms, no model involved.
 ## Install
 
 ```sh
-om plugin add text-tools
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/text-tools
 ```
 
-It installs with its defaults and lists them; `om plugin configure text-tools`
-opens them as a form in your editor. Either way they are written to
-`~/.config/omaestro/rules.d/text-tools.lua`, which you can also edit.
+It installs with its defaults and lists them; `--set key=value` after
+the URL (once per option) installs it with yours instead, and
+`om plugin configure text-tools` opens them as a form in your editor.
+Either way they are written to `~/.config/omaestro/rules.d/text-tools.lua`,
+which you can also edit.
 
 Your own snippets go in `~/.config/omaestro/rules.d/text-tools.lua`:
 

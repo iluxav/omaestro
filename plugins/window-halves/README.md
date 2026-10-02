@@ -19,12 +19,14 @@ so change `chord` if you need that.
 ## Install
 
 ```sh
-om plugin add window-halves
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/window-halves
 ```
 
-It installs with its defaults and lists them; `om plugin configure window-halves`
-opens them as a form in your editor. Either way they are written to
-`~/.config/omaestro/rules.d/window-halves.lua`, which you can also edit.
+It installs with its defaults and lists them; `--set key=value` after
+the URL (once per option) installs it with yours instead, and
+`om plugin configure window-halves` opens them as a form in your editor.
+Either way they are written to `~/.config/omaestro/rules.d/window-halves.lua`,
+which you can also edit.
 
 Options go in `~/.config/omaestro/rules.d/window-halves.lua`:
 

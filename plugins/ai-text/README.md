@@ -2,9 +2,8 @@
 
 The selection through the local model: rewrite it in place, show a summary,
 or replace it with a translation. Select text in any app, press the chord,
-and the result lands where the text was. Needs Ollama running with the
-model from `omaestro.toml` (default `llama3.2`); the text goes to that
-endpoint and nowhere else.
+and the result lands where the text was. Needs Ollama running; the text
+goes to that endpoint and nowhere else.
 
 | Chord | What |
 |---|---|
@@ -15,15 +14,18 @@ endpoint and nowhere else.
 ## Install
 
 ```sh
-om plugin add ai-text
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/ai-text --set model=llama3.2:3b
 ```
 
-It installs with its defaults and lists them; `om plugin configure ai-text`
-opens them as a form in your editor. Either way they are written to
-`~/.config/omaestro/rules.d/ai-text.lua`, which you can also edit.
+`model` is the Ollama model to use; `ollama list` shows the ones you have.
 
-That writes `~/.config/omaestro/rules.d/ai-text.lua`, which is where the
-options go:
+It installs with its defaults and lists them; `--set key=value` after
+the URL (once per option) installs it with yours instead, and
+`om plugin configure ai-text` opens them as a form in your editor.
+Either way they are written to `~/.config/omaestro/rules.d/ai-text.lua`,
+which you can also edit.
+
+Options in that file look like this:
 
 ```lua
 local ai = om.use("ai-text")
@@ -34,7 +36,10 @@ ai.setup({ language = "German", summarize = false })
 
 - `rewrite`, `summarize`, `translate`: the chords; `false` switches one off.
 - `language`: the translation target (default `English`).
-- `model`: a model name for all three; default from `omaestro.toml`.
+- `model`: a model name for all three. Without one, the model in
+  `omaestro.toml` (default `llama3.2`); when that one is not installed, the
+  first chord lists the models Ollama has, and the one you pick is used from
+  then on. To change it later, set `model`.
 - The prompts are in `ai.prompts` and can be changed before `setup`.
 
 ## Modes: one chord, a menu

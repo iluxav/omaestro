@@ -11,7 +11,9 @@
 --   summarize = "SUPER + ALT + M"   show a summary as a notification, the text stays
 --   translate = "SUPER + ALT + T"   replace the selection with its translation
 --   language  = "English"           the translation target
---   model     = nil                 a model name for every chord (default: omaestro.toml)
+--   model     = nil                 a model name for every chord (default: omaestro.toml's;
+--                                   when that one is not installed, the first chord asks
+--                                   which of Ollama's to use and keeps the answer)
 --
 -- One chord, a menu of modes: with `modes` set, SUPER+ALT+J asks which
 -- mode to apply (the last one used comes first, so Enter repeats it), and
@@ -99,14 +101,54 @@ local function check_modes(list)
   return modes
 end
 
+-- The model picked from the menu, when the rule names none.
+local PICKED = "ai-text.model"
+
+-- The models Ollama at `host` has, or nil.
+local function installed_models(host)
+  local ok, response = pcall(om.http, "http://" .. host .. "/api/tags", { json = true, timeout = 5 })
+  if not ok or not response.ok or type(response.json) ~= "table" then
+    return nil
+  end
+  local names = {}
+  for _, entry in ipairs(response.json.models or {}) do
+    names[#names + 1] = entry.name
+  end
+  return #names > 0 and names or nil
+end
+
 function M.setup(opts)
   opts = opts or {}
-  local model = opts.model
   -- The model can take a while; a notification says it is working until
-  -- the answer is back (om.busy goes away when the handler ends).
+  -- the answer is back (om.busy goes away when the handler ends). With no
+  -- model in the rule, the one picked earlier, else omaestro.toml's; when
+  -- that one is not installed, a menu of the installed ones picks another,
+  -- kept for next time. nil when the menu is cancelled.
   local function ask(text, system, doing)
-    om.busy(doing or "Rewriting…", text:sub(1, 80))
-    return om.llm(text, { system = system, model = model })
+    doing = doing or "Rewriting…"
+    om.busy(doing, text:sub(1, 80))
+    local model = opts.model or om.store.get(PICKED)
+    local ok, answer = pcall(om.llm, text, { system = system, model = model })
+    if ok then
+      return answer
+    end
+    local host, missing = tostring(answer):match("model endpoint (%S+) answered 404: model '(.-)' not found")
+    local names = not opts.model and host and installed_models(host)
+    if not names then
+      error(answer, 0)
+    end
+    om.busy()
+    local window = om.window()
+    local pick = om.choose("Model (" .. missing .. " is not installed)", names)
+    if window then
+      window:focus()
+    end
+    if not pick then
+      return nil
+    end
+    om.store.set(PICKED, pick)
+    om.busy(doing, pick)
+    return om.llm(text, { system = system, model = pick })
   end
 
   local modes = opts.modes
@@ -121,6 +163,9 @@ function M.setup(opts)
     local function apply(ctx, instruction, label, show)
       local system = table.concat({ M.frame[1], instruction, M.frame[2] }, " ")
       local answer = ask(ctx.selection, system, (label or "Custom instruction") .. "…")
+      if not answer then
+        return
+      end
       if show then
         om.busy()
         om.notify(label, answer:trim())
@@ -173,7 +218,10 @@ function M.setup(opts)
     om.hotkey(rewrite, function()
       local text = selection()
       if text then
-        om.paste(unquote(ask(text, M.prompts.rewrite)))
+        local answer = ask(text, M.prompts.rewrite)
+        if answer then
+          om.paste(unquote(answer))
+        end
       end
     end)
   end
@@ -183,9 +231,11 @@ function M.setup(opts)
     om.hotkey(summarize, function()
       local text = selection()
       if text then
-        local summary = ask(text, M.prompts.summarize, "Summarizing…"):trim()
-        om.busy()
-        om.notify("Summary", summary)
+        local summary = ask(text, M.prompts.summarize, "Summarizing…")
+        if summary then
+          om.busy()
+          om.notify("Summary", summary:trim())
+        end
       end
     end)
   end
@@ -197,7 +247,10 @@ function M.setup(opts)
     om.hotkey(translate, function()
       local text = selection()
       if text then
-        om.paste(unquote(ask(text, system, "Translating to " .. language .. "…")))
+        local answer = ask(text, system, "Translating to " .. language .. "…")
+        if answer then
+          om.paste(unquote(answer))
+        end
       end
     end)
   end

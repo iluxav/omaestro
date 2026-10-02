@@ -16,12 +16,14 @@ too, which also opens the panel when the daemon is down.
 ## Install
 
 ```sh
-om plugin add panel
+om plugin add https://github.com/iluxav/omaestro/tree/main/plugins/panel
 ```
 
-It installs with its defaults and lists them; `om plugin configure panel`
-opens them as a form in your editor. Either way they are written to
-`~/.config/omaestro/rules.d/panel.lua`, which you can also edit.
+It installs with its defaults and lists them; `--set key=value` after
+the URL (once per option) installs it with yours instead, and
+`om plugin configure panel` opens them as a form in your editor.
+Either way they are written to `~/.config/omaestro/rules.d/panel.lua`,
+which you can also edit.
 
 ## Options
 
