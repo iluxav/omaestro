@@ -105,6 +105,38 @@ impl Chord {
     pub fn key_hyprland(&self) -> String {
         self.key_name()
     }
+
+    /// The chord as `wtype` arguments: `-M ctrl -M shift -k v -m shift -m
+    /// ctrl`. `None` for a modifier wtype has no name for (MOD2, MOD3).
+    pub fn wtype_args(&self) -> Option<Vec<String>> {
+        let mods = self
+            .mod_names()
+            .map(|name| match name {
+                "SUPER" => Some("logo"),
+                "CTRL" => Some("ctrl"),
+                "ALT" => Some("alt"),
+                "SHIFT" => Some("shift"),
+                "CAPS" => Some("capslock"),
+                "MOD5" => Some("altgr"),
+                _ => None,
+            })
+            .collect::<Option<Vec<_>>>()?;
+        // A letter's keysym is the lower-case one; shift is a modifier above.
+        let key = if self.key.len() == 1 {
+            self.key.to_ascii_lowercase()
+        } else {
+            self.key.clone()
+        };
+        let mut args = Vec::new();
+        for m in &mods {
+            args.extend(["-M".to_string(), m.to_string()]);
+        }
+        args.extend(["-k".to_string(), key]);
+        for m in mods.iter().rev() {
+            args.extend(["-m".to_string(), m.to_string()]);
+        }
+        Some(args)
+    }
 }
 
 /// A key press that produces one character: `(modifiers, key)` in the form
@@ -250,5 +282,30 @@ mod tests {
         let bare = Chord::parse("Return").unwrap();
         assert_eq!(bare.mods_hyprland(), "");
         assert_eq!(bare.key_hyprland(), "Return");
+    }
+
+    #[test]
+    fn parts_for_wtype() {
+        let args = |text| {
+            Chord::parse(text)
+                .unwrap()
+                .wtype_args()
+                .map(|a| a.join(" "))
+        };
+        assert_eq!(
+            args("ctrl+shift+v").as_deref(),
+            Some("-M ctrl -M shift -k v -m shift -m ctrl")
+        );
+        assert_eq!(
+            args("SUPER + ALT + J").as_deref(),
+            Some("-M logo -M alt -k j -m alt -m logo")
+        );
+        assert_eq!(args("Return").as_deref(), Some("-k Return"));
+        // wtype's names: capslock, altgr.
+        assert_eq!(
+            args("CAPS + MOD5 + a").as_deref(),
+            Some("-M capslock -M altgr -k a -m altgr -m capslock")
+        );
+        assert_eq!(args("MOD3 + x"), None);
     }
 }

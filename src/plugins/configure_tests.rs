@@ -210,7 +210,7 @@ fn the_editor_waits_for_the_form() {
     // would start is run instead, told to wait.
     assert_eq!(
         waiting("omarchy-launch-editor --inline", Some("code".into())),
-        "code --wait"
+        "code --wait --new-window"
     );
     assert_eq!(
         waiting("/usr/bin/omarchy-launch-editor", Some("nvim".into())),
@@ -220,9 +220,24 @@ fn the_editor_waits_for_the_form() {
     assert_eq!(waiting("kate", None), "kate --block");
     assert_eq!(waiting("/opt/zed/zed", None), "/opt/zed/zed --wait");
     // Already waiting, or a terminal editor: as it is.
-    assert_eq!(waiting("code --wait", None), "code --wait");
-    assert_eq!(waiting("code -w", None), "code -w");
+    assert_eq!(waiting("code --wait", None), "code --wait --new-window");
+    assert_eq!(waiting("code -w", None), "code -w --new-window");
     assert_eq!(waiting("nvim -u NONE", None), "nvim -u NONE");
+}
+
+#[test]
+fn vs_code_opens_the_form_in_a_window_of_its_own() {
+    // Not in the window used last, which may be on another workspace.
+    assert_eq!(waiting("cursor", None), "cursor --wait --new-window");
+    assert_eq!(
+        waiting("/usr/bin/codium -w", None),
+        "/usr/bin/codium -w --new-window"
+    );
+    // A window chosen in the command stays chosen.
+    assert_eq!(waiting("code -r", None), "code -r --wait");
+    assert_eq!(waiting("code -n -w", None), "code -n -w");
+    // Other windowed editors: only the wait flag.
+    assert_eq!(waiting("subl", None), "subl --wait");
 }
 
 #[test]

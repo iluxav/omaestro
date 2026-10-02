@@ -291,6 +291,12 @@ const GUI_EDITORS: &[(&str, &str)] = &[
     ("gvim", "--nofork"),
 ];
 
+/// VS Code and its forks hand a file to the window used last, on whatever
+/// workspace that is; the form opens in a window of its own instead, where
+/// you are, unless the command already says which window.
+const NEW_WINDOW_EDITORS: &[&str] = &["code", "code-insiders", "codium", "cursor", "windsurf"];
+const WINDOW_FLAGS: &[&str] = &["-n", "--new-window", "-r", "--reuse-window"];
+
 fn base(program: &str) -> &str {
     program.rsplit('/').next().unwrap_or(program)
 }
@@ -303,7 +309,8 @@ fn is_gui(program: &str) -> bool {
 /// `$EDITOR`) and the editor Omarchy's launcher would pick
 /// (`omarchy_default`): `omarchy-launch-editor` is replaced by that editor
 /// (nvim when there is none), and a GUI editor gets the flag that makes it
-/// wait for the file to be closed, unless it has it already.
+/// wait for the file to be closed, unless it has it already; VS Code and
+/// its forks also get a new window (see `NEW_WINDOW_EDITORS`).
 fn waiting(configured: &str, omarchy_default: Option<String>) -> String {
     let mut parts: Vec<String> = configured.split_whitespace().map(str::to_string).collect();
     if parts
@@ -318,6 +325,12 @@ fn waiting(configured: &str, omarchy_default: Option<String>) -> String {
         && !parts.iter().any(|p| p == flag || p == "-w")
     {
         parts.push(flag.to_string());
+    }
+    if let Some(program) = parts.first()
+        && NEW_WINDOW_EDITORS.contains(&base(program))
+        && !parts.iter().any(|p| WINDOW_FLAGS.contains(&p.as_str()))
+    {
+        parts.push("--new-window".to_string());
     }
     parts.join(" ")
 }

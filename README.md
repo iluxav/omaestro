@@ -19,7 +19,7 @@ every 45 minutes. One daemon, one `om` command, a panel in the Omarchy
 shell, and plugins to start from.
 
 <p align="center">
-  <img src="preview.png" width="480" alt="The omaestro panel in the Omarchy shell: rules by name, grouped by plugin, each with a switch; Configure and Remove per plugin; a field to add a plugin by its URL">
+  <img src="assets/omaestro-demo.gif" width="720" alt="A rough paragraph selected in a note; SUPER+ALT+J opens the rewrite menu, typing 'pitch' picks Marketing pitch, and the local model's version replaces the paragraph in place. Then the omaestro panel, and the ai-text options form opened from it">
 </p>
 
 ```lua
@@ -59,6 +59,10 @@ The project is `omaestro`; the command and the Lua table are both `om`.
 ```sh
 omarchy plugin add https://github.com/iluxav/omaestro --enable
 ```
+
+<p align="center">
+  <img src="preview.png" width="480" alt="The omaestro panel in the Omarchy shell: rules by name, grouped by plugin, each with a switch; Configure and Remove per plugin; a field to add a plugin by its URL">
+</p>
 
 The plugin's service downloads the `om` binary for your CPU from this
 repository's releases, checks it against the SHA256 pinned in the plugin,

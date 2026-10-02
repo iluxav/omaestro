@@ -6,7 +6,7 @@
 //! the rest, and Chromium and Electron apps ignore its chords.
 
 use super::hypr::ctl;
-use super::{BoxFuture, Injector, Result, run};
+use super::{BackendError, BoxFuture, Injector, Result, run};
 use crate::chord::{Chord, KeyPress, key_for_char};
 
 pub struct Keys;
@@ -34,7 +34,23 @@ fn runs(text: &str) -> Vec<Run> {
 
 impl Injector for Keys {
     fn key<'a>(&'a self, chord: &'a Chord) -> BoxFuture<'a, Result<()>> {
-        Box::pin(ctl::press(chord))
+        Box::pin(async move {
+            match ctl::press(chord).await {
+                // Hyprland looks keys up in the keymap of the keyboard used
+                // last. After any wtype input (ours, or another tool's) that
+                // is wtype's own small keymap, and every key it lacks is "not
+                // found" until the real keyboard is touched again. A single
+                // chord (the paste) is safe to press again through wtype.
+                Err(err) if key_not_found(&err) => match chord.wtype_args() {
+                    Some(args) => {
+                        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+                        run::run("wtype", &args).await.map(|_| ())
+                    }
+                    None => Err(err),
+                },
+                result => result,
+            }
+        })
     }
 
     fn erase(&self, count: usize) -> BoxFuture<'_, Result<()>> {
@@ -60,9 +76,29 @@ impl Injector for Keys {
     }
 }
 
+/// Hyprland's answer when the last keyboard's keymap has no such key.
+fn key_not_found(err: &BackendError) -> bool {
+    matches!(err, BackendError::Failed { message, .. } if message.contains("key not found"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_missing_key_falls_back_to_wtype() {
+        let failed = |message: &str| BackendError::Failed {
+            tool: "hyprctl",
+            message: message.to_string(),
+        };
+        assert!(key_not_found(&failed(
+            "=[C]:-1: send_shortcut: key not found"
+        )));
+        assert!(!key_not_found(&failed("no such dispatcher")));
+        assert!(!key_not_found(&BackendError::MissingTool {
+            tool: "hyprctl"
+        }));
+    }
 
     #[test]
     fn text_splits_into_key_presses_and_the_rest() {
