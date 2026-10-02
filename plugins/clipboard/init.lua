@@ -9,7 +9,7 @@
 --   history = "SUPER + ALT + V"
 --   keep    = 10
 --   notes   = "SUPER + ALT + N"
---   file    = os.getenv("HOME") .. "/notes/clips.md"
+--   file    = "~/notes/clips.md"
 
 local M = {}
 
@@ -61,7 +61,7 @@ function M.setup(opts)
   end
 
   local notes = option(opts.notes, "SUPER + ALT + N")
-  local file = opts.file or (os.getenv("HOME") .. "/notes/clips.md")
+  local file = (opts.file or "~/notes/clips.md"):gsub("^~/", os.getenv("HOME") .. "/")
   if notes then
     om.hotkey(notes, function()
       local text = om.clipboard():trim()

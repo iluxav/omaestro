@@ -1,0 +1,16 @@
+{
+  "options": [
+    {
+      "key": "notify_monitor",
+      "type": "bool",
+      "label": "Notify when a monitor comes or goes",
+      "default": true
+    },
+    {
+      "key": "log_focus",
+      "type": "bool",
+      "label": "Log every focus change (to find app classes)",
+      "default": false
+    }
+  ]
+}

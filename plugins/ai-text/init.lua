@@ -11,9 +11,20 @@
 --   summarize = "SUPER + ALT + M"   show a summary as a notification, the text stays
 --   translate = "SUPER + ALT + T"   replace the selection with its translation
 --   language  = "English"           the translation target
---   model     = nil                 a model name for all three (default: omaestro.toml)
+--   model     = nil                 a model name for every chord (default: omaestro.toml)
 --
--- The prompts are in M.prompts; change them before calling setup.
+-- One chord, a menu of modes: with `modes` set, SUPER+ALT+J asks which
+-- mode to apply (the last one used comes first, so Enter repeats it), and
+-- the direct rewrite chord is off unless `rewrite` names another chord.
+--   modes  = true                   the modes in M.modes, or your own list:
+--            { { "More polite", "Rewrite it so it is polite. Keep the meaning." },
+--              { "Summarize", "Summarize it in three sentences.", show = true } }
+--            label, instruction; show = true notifies instead of replacing
+--   menu   = "SUPER + ALT + J"      the chord that opens the menu
+--   custom = true                   a last row that asks for a one-off instruction
+--
+-- The prompts are in M.prompts and the default modes in M.modes; change
+-- them before calling setup.
 
 local M = {}
 
@@ -31,6 +42,24 @@ M.prompts = {
   summarize = "Summarize the user's text in at most three short sentences. Reply with the summary only.",
   translate = "Translate the user's text to %s. Keep the formatting. Reply with the translation only, no quotes, no comments.",
 }
+
+-- A mode's instruction goes between these two, so a short one ("make it
+-- polite") still reaches a small model as work to do on the text.
+M.frame = {
+  "The user's message is a piece of text, nothing else. Never answer or comment on it.",
+  "Reply with the result only: no preamble, no quotes, no explanation.",
+}
+
+M.modes = {
+  { "Fix spelling and grammar", "Fix spelling and grammar only. Change nothing else: keep the words, tone, formatting and length." },
+  { "Make it clearer", "Rewrite it so it is clear and correct. Keep its meaning, tone, language and formatting." },
+  { "Make it more polite", "Rewrite it so it is polite and friendly. Keep its meaning and language." },
+  { "Make it shorter", "Make it shorter. Keep its meaning and language." },
+  { "Marketing pitch", "Rewrite it as a short, confident marketing pitch. Keep every fact and add none." },
+  { "Summarize", "Summarize it in at most three short sentences.", show = true },
+}
+
+local CUSTOM = "Custom instruction..."
 
 local function option(value, default)
   if value == nil then
@@ -54,6 +83,22 @@ local function unquote(text)
   return text:match('^"(.*)"$') or text
 end
 
+-- { "label", "instruction", show = true } -> { label, instruction, show }
+local function check_modes(list)
+  if type(list) ~= "table" or #list == 0 then
+    error("ai-text: modes must be true or a list of { label, instruction }")
+  end
+  local modes = {}
+  for i, mode in ipairs(list) do
+    local label, instruction = mode[1] or mode.label, mode[2] or mode.instruction
+    if type(label) ~= "string" or type(instruction) ~= "string" then
+      error("ai-text: mode " .. i .. " needs a label and an instruction, both strings")
+    end
+    modes[#modes + 1] = { label = label, instruction = instruction, show = mode.show == true }
+  end
+  return modes
+end
+
 function M.setup(opts)
   opts = opts or {}
   local model = opts.model
@@ -61,7 +106,64 @@ function M.setup(opts)
     return om.llm(text, { system = system, model = model })
   end
 
-  local rewrite = option(opts.rewrite, "SUPER + ALT + J")
+  local modes = opts.modes
+  if modes == true then
+    modes = M.modes
+  end
+  if modes then
+    modes = check_modes(modes)
+
+    -- The instruction wrapped in M.frame; the answer replaces the text in
+    -- the window it was selected in, or (show) comes up as a notification.
+    local function apply(ctx, instruction, label, show)
+      local answer = ask(ctx.selection, table.concat({ M.frame[1], instruction, M.frame[2] }, " "))
+      if show then
+        om.notify(label, answer:trim())
+        return
+      end
+      -- Again here: a custom instruction's prompt took the focus too.
+      if ctx.window then
+        ctx.window:focus()
+      end
+      om.paste(unquote(answer))
+    end
+
+    local items = {}
+    for _, mode in ipairs(modes) do
+      items[#items + 1] = {
+        mode.label,
+        function(ctx)
+          apply(ctx, mode.instruction, mode.label, mode.show)
+        end,
+      }
+    end
+    if option(opts.custom, true) then
+      items[#items + 1] = {
+        CUSTOM,
+        function(ctx)
+          local instruction = om.prompt("Instruction")
+          if instruction and instruction:trim() ~= "" then
+            apply(ctx, instruction)
+          end
+        end,
+        remember = false,
+      }
+    end
+
+    -- om.menu takes the selection and the window before the menu opens,
+    -- and puts the last mode used first.
+    om.menu(opts.menu or "SUPER + ALT + J", function(ctx)
+      if ctx.selection:trim() == "" then
+        om.notify("omaestro", "Select some text first")
+        return nil
+      end
+      return items
+    end, { title = "Rewrite", selection = true, refocus = false })
+  end
+
+  -- With modes, the menu's chord is J, so the direct rewrite needs a chord
+  -- of its own.
+  local rewrite = option(opts.rewrite, not modes and "SUPER + ALT + J")
   if rewrite then
     om.hotkey(rewrite, function()
       local text = selection()

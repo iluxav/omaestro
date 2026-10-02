@@ -1,0 +1,10 @@
+{
+  "options": [
+    {
+      "key": "chord",
+      "type": "chord",
+      "label": "Open the rules panel",
+      "default": "SUPER + ALT + O"
+    }
+  ]
+}

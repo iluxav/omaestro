@@ -1,0 +1,22 @@
+{
+  "options": [
+    {
+      "key": "chord",
+      "type": "chord",
+      "label": "Search the web",
+      "default": "SUPER + ALT + I"
+    },
+    {
+      "key": "url",
+      "type": "string",
+      "label": "Search URL (the query is appended)",
+      "default": "https://duckduckgo.com/?q="
+    },
+    {
+      "key": "open",
+      "type": "string",
+      "label": "Command that opens the URL",
+      "default": "xdg-open"
+    }
+  ]
+}

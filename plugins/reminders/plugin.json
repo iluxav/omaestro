@@ -1,0 +1,18 @@
+{
+  "options": [
+    {
+      "key": "ask",
+      "type": "chord",
+      "label": "Remind me in N minutes",
+      "default": "SUPER + ALT + R",
+      "optional": true
+    },
+    {
+      "key": "stretch",
+      "type": "interval",
+      "label": "Stand-up reminder every",
+      "default": "45m",
+      "optional": true
+    }
+  ]
+}

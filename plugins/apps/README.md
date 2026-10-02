@@ -13,6 +13,9 @@ Bring an app to the front or start it, and arrange a desk with one chord.
 om plugin add apps
 ```
 
+Its options are Lua tables, so they go in
+`~/.config/omaestro/rules.d/apps.lua` by hand (examples below).
+
 Options go in the rule that writes, `~/.config/omaestro/rules.d/apps.lua`:
 
 ```lua

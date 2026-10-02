@@ -9,6 +9,9 @@
 --     chord -> the text, or a function returning it. Typed with om.type,
 --     which suits short ASCII; for longer text om.paste is the surer route.
 --   upper = "SUPER + ALT + U"   (false: off)
+--   date  = "SUPER + ALT + D"   the chord that types today's date, when no
+--                               snippets are given (false: off)
+--   date_format = "%Y-%m-%d"    how the date is written (os.date format)
 
 local M = {}
 
@@ -22,11 +25,16 @@ end
 function M.setup(opts)
   opts = opts or {}
 
-  local snippets = opts.snippets or {
-    ["SUPER + ALT + D"] = function()
-      return os.date("%Y-%m-%d")
-    end,
-  }
+  local snippets = opts.snippets
+  if not snippets then
+    snippets = {}
+    local date = option(opts.date, "SUPER + ALT + D")
+    if date then
+      snippets[date] = function()
+        return os.date(opts.date_format or "%Y-%m-%d")
+      end
+    end
+  end
   for chord, snippet in pairs(snippets) do
     om.hotkey(chord, function()
       local text = snippet

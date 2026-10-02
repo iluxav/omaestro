@@ -1,0 +1,16 @@
+{
+  "options": [
+    {
+      "key": "chord",
+      "type": "chord",
+      "label": "Enter the window mode",
+      "default": "SUPER + ALT + W"
+    },
+    {
+      "key": "once",
+      "type": "bool",
+      "label": "Leave the mode after one key",
+      "default": false
+    }
+  ]
+}

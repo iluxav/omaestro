@@ -13,19 +13,32 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use tokio::process::Command;
 
+mod configure;
 pub mod fetch;
 mod rule;
 mod scaffold;
+pub mod schema;
 pub mod source;
 #[cfg(test)]
 mod tests;
 mod update;
 
+pub use configure::{Setup, ask_stdin, configure};
 use fetch::Record;
 use rule::{drop_rule, write_rule};
 pub use scaffold::new;
 use source::{Official, check_name};
 pub use update::update;
+
+/// The rule file `om plugin add` writes, for the runtime's tests.
+#[cfg(test)]
+pub fn rule_text_for_tests(
+    name: &str,
+    description: &str,
+    values: &[(String, serde_json::Value)],
+) -> String {
+    rule::rule_text(name, description, values)
+}
 
 /// The plugins of omaestro's own repository a fresh install offers in one
 /// click (see `welcome`), and `make install` suggests.
@@ -82,6 +95,8 @@ async fn git(cwd: Option<&Path>, args: &[&str]) -> Result<String> {
 /// Installs plugins: for each spec, fetch it, check its shape, copy it into
 /// `lib/<name>`, and (with `rule`) write the rule file that loads it. One
 /// that fails does not stop the others; the error lists every failure.
+// One argument per command-line choice; a struct would only rename them.
+#[allow(clippy::too_many_arguments)]
 pub async fn add(
     config_dir: &Path,
     specs: &[String],
@@ -89,13 +104,22 @@ pub async fn add(
     path: Option<&str>,
     rule: bool,
     official: &Official,
+    setup: &Setup,
+    ask: &mut (dyn FnMut(&str) -> Option<String> + Send),
 ) -> Result<()> {
-    if specs.len() > 1 && (reference.is_some() || path.is_some()) {
-        bail!("--ref and --path go with one plugin at a time");
+    if specs.len() > 1 && (reference.is_some() || path.is_some() || !setup.sets.is_empty()) {
+        bail!("--ref, --path and --set go with one plugin at a time");
+    }
+    if !rule && !setup.sets.is_empty() {
+        bail!("--set writes the rule file, which --no-rule leaves out");
     }
     let mut failed = Vec::new();
     for spec in specs {
-        if let Err(err) = add_one(config_dir, spec, reference, path, rule, official).await {
+        if let Err(err) = add_one(
+            config_dir, spec, reference, path, rule, official, setup, ask,
+        )
+        .await
+        {
             eprintln!("om: {spec}: {err:#}");
             failed.push(spec.clone());
         }
@@ -107,6 +131,7 @@ pub async fn add(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn add_one(
     config_dir: &Path,
     spec: &str,
@@ -114,6 +139,8 @@ async fn add_one(
     path: Option<&str>,
     rule: bool,
     official: &Official,
+    setup: &Setup,
+    ask: &mut (dyn FnMut(&str) -> Option<String> + Send),
 ) -> Result<()> {
     let lib = config_dir.join("lib");
     let source = source::parse(spec, reference, path, official)?;
@@ -128,6 +155,28 @@ async fn add_one(
     let fetched = fetch::fetch(&lib, &source, official).await?;
     let description = fetch::summary(&fetched.dir)
         .unwrap_or_else(|| format!("a plugin from {}", source.describe()));
+    // Its options, chosen before anything is installed: cancelling the
+    // questions leaves nothing behind.
+    let values = if rule {
+        match schema::load(&fetched.dir) {
+            Ok(Some(schema)) => configure::fill(&name, &schema, &Default::default(), setup, ask)?,
+            Ok(None) => {
+                if !setup.sets.is_empty() {
+                    bail!(
+                        "{name} has no {}, so --set has nothing to set",
+                        schema::FILE
+                    );
+                }
+                Vec::new()
+            }
+            Err(err) => {
+                eprintln!("om: {name}: {err:#}; installing it with its defaults");
+                Vec::new()
+            }
+        }
+    } else {
+        Vec::new()
+    };
     let installed = fetch::install(&lib, &name, &fetched)?;
     println!(
         "installed {name} {} into {}",
@@ -135,7 +184,7 @@ async fn add_one(
         installed.display()
     );
     if rule {
-        write_rule(config_dir, &name, &description)?;
+        write_rule(config_dir, &name, &description, &values, false, false)?;
     } else {
         print_use(&name);
     }

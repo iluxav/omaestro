@@ -18,6 +18,10 @@ The prompt is Omarchy's menu (or walker, wofi, fuzzel, rofi, or
 om plugin add reminders
 ```
 
+It asks for its options as it installs (Enter keeps a default);
+`om plugin configure reminders` changes them later. Both write
+`~/.config/omaestro/rules.d/reminders.lua`, which you can also edit.
+
 Options go in `~/.config/omaestro/rules.d/reminders.lua`:
 
 ```lua

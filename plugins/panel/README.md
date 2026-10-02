@@ -14,6 +14,10 @@ too, which also opens the panel when the daemon is down.
 om plugin add panel
 ```
 
+It asks for its options as it installs (Enter keeps a default);
+`om plugin configure panel` changes them later. Both write
+`~/.config/omaestro/rules.d/panel.lua`, which you can also edit.
+
 ## Options
 
 - `chord`: the hotkey (default `SUPER + ALT + O`), in

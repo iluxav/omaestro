@@ -128,7 +128,9 @@ fn caller(lua: &Lua) -> Option<String> {
                 .strip_prefix('@')
                 .or_else(|| name.strip_prefix('='))
                 .unwrap_or(&name);
-            if file.starts_with("__mlua") {
+            // Helpers in the prelude (om.menu) register triggers for the
+            // rule that called them: the origin is that rule's line.
+            if file.starts_with("__mlua") || file == PRELUDE_CHUNK {
                 return None;
             }
             let file = match &config_dir {

@@ -1,0 +1,30 @@
+{
+  "options": [
+    {
+      "key": "history",
+      "type": "chord",
+      "label": "Paste from the clip history",
+      "default": "SUPER + ALT + V",
+      "optional": true
+    },
+    {
+      "key": "keep",
+      "type": "number",
+      "label": "Clips to keep",
+      "default": 10
+    },
+    {
+      "key": "notes",
+      "type": "chord",
+      "label": "Append the clipboard to the notes file",
+      "default": "SUPER + ALT + N",
+      "optional": true
+    },
+    {
+      "key": "file",
+      "type": "path",
+      "label": "Notes file",
+      "default": "~/notes/clips.md"
+    }
+  ]
+}

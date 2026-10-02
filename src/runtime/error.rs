@@ -81,10 +81,17 @@ fn is_chunk_name(name: &str) -> bool {
 /// The first traceback frame that is Lua code the user wrote: not a C
 /// function, not mlua's own async glue.
 fn first_rule_frame(traceback: &str) -> Option<&str> {
+    // Prelude helpers (om.menu, om.layout) are skipped: the position worth
+    // showing is the rule that called them, or, when no rule is on the
+    // stack, none, so the runtime names the trigger's rule instead.
     traceback
         .lines()
         .map(str::trim)
-        .filter(|line| !line.starts_with('[') && !line.starts_with("__mlua"))
+        .filter(|line| {
+            !line.starts_with('[')
+                && !line.starts_with("__mlua")
+                && !line.starts_with(&format!("{PRELUDE_CHUNK}:"))
+        })
         .find_map(|line| split_position(line).map(|(position, _)| position))
 }
 

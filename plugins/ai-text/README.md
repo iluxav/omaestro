@@ -18,6 +18,10 @@ endpoint and nowhere else.
 om plugin add ai-text
 ```
 
+It asks for its options as it installs (Enter keeps a default);
+`om plugin configure ai-text` changes them later. Both write
+`~/.config/omaestro/rules.d/ai-text.lua`, which you can also edit.
+
 That writes `~/.config/omaestro/rules.d/ai-text.lua`, which is where the
 options go:
 
@@ -32,3 +36,38 @@ ai.setup({ language = "German", summarize = false })
 - `language`: the translation target (default `English`).
 - `model`: a model name for all three; default from `omaestro.toml`.
 - The prompts are in `ai.prompts` and can be changed before `setup`.
+
+## Modes: one chord, a menu
+
+Turn on `modes` and SUPER+ALT+J asks which mode to apply instead of always
+correcting. Type to filter, Enter picks, Escape cancels. The last mode used
+is first, so the chord and Enter repeat it.
+
+```lua
+om.use("ai-text").setup({ modes = true })   -- the modes in ai.modes
+```
+
+Or your own list, in the order the menu shows it:
+
+```lua
+om.use("ai-text").setup({
+  modes = {
+    { "Fix English only", "Fix spelling and grammar. Change nothing else." },
+    { "More polite",      "Rewrite it so it is polite and warm. Keep the meaning." },
+    { "Marketing pitch",  "Rewrite it as a short, confident marketing pitch." },
+    { "Summarize",        "Summarize it in three sentences.", show = true },
+  },
+})
+```
+
+- Each mode is a label and an instruction. The instruction is wrapped in
+  `ai.frame`, which tells the model to work on the text and reply with the
+  result only, so a short instruction is enough.
+- `show = true` shows the answer as a notification and leaves the text alone.
+- `custom` (default `true`) adds a last row, "Custom instruction...", that
+  asks for a one-off instruction.
+- `menu`: the chord that opens the menu (default `SUPER + ALT + J`). With
+  modes on, the direct rewrite chord is off unless `rewrite` names another
+  chord; summarize and translate stay as they are.
+- The selection and the focused window are read before the menu opens, and
+  that window gets the focus back before the paste.

@@ -8,6 +8,10 @@ A notification naming the file when something lands in `~/Downloads`.
 om plugin add downloads
 ```
 
+It asks for its options as it installs (Enter keeps a default);
+`om plugin configure downloads` changes them later. Both write
+`~/.config/omaestro/rules.d/downloads.lua`, which you can also edit.
+
 Another directory, in `~/.config/omaestro/rules.d/downloads.lua`:
 
 ```lua

@@ -149,6 +149,26 @@ enum PluginCommand {
         /// Only install; do not write rules.d/NAME.lua
         #[arg(long)]
         no_rule: bool,
+        /// An option, without asking (repeatable): --set chord="SUPER + ALT + P"
+        #[arg(long, value_name = "KEY=VALUE")]
+        set: Vec<String>,
+        /// Take every option's default without asking
+        #[arg(long)]
+        defaults: bool,
+    },
+    /// Change an installed plugin's options (from its plugin.json); they are
+    /// written into rules.d/NAME.lua
+    Configure {
+        name: String,
+        /// An option, without asking (repeatable)
+        #[arg(long, value_name = "KEY=VALUE")]
+        set: Vec<String>,
+        /// Ask nothing: apply --set and keep the rest
+        #[arg(long)]
+        defaults: bool,
+        /// Replace a rule file om did not write
+        #[arg(long)]
+        force: bool,
     },
     /// The plugins in omaestro's repository, and which are installed
     Available,
@@ -262,7 +282,10 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                     r#ref,
                     path,
                     no_rule,
+                    set,
+                    defaults,
                 } => {
+                    let setup = plugins::Setup::from_cli(&set, defaults, false).await?;
                     plugins::add(
                         &config_dir,
                         &what,
@@ -270,8 +293,19 @@ async fn run(cli: Cli) -> Result<ExitCode> {
                         path.as_deref(),
                         !no_rule,
                         &official,
+                        &setup,
+                        &mut plugins::ask_stdin,
                     )
                     .await?
+                }
+                PluginCommand::Configure {
+                    name,
+                    set,
+                    defaults,
+                    force,
+                } => {
+                    let setup = plugins::Setup::from_cli(&set, defaults, force).await?;
+                    plugins::configure(&config_dir, &name, &setup, &mut plugins::ask_stdin).await?
                 }
                 PluginCommand::Available => plugins::available(&config_dir, &official).await?,
                 PluginCommand::List { json } => plugins::list(&lib, json).await?,
@@ -343,9 +377,18 @@ async fn daemon(socket: &Path, config_dir: Option<PathBuf>, foreground: bool) ->
             let notifier = backend::notify::NotifySend;
             welcome::offer(&notifier, |names| async move {
                 let official = plugins::source::Official::from_env();
-                plugins::add(&dir, &names, None, None, true, &official)
-                    .await
-                    .map_err(|err| format!("{err:#}"))
+                plugins::add(
+                    &dir,
+                    &names,
+                    None,
+                    None,
+                    true,
+                    &official,
+                    &plugins::Setup::defaults(),
+                    &mut |_| None,
+                )
+                .await
+                .map_err(|err| format!("{err:#}"))
             })
             .await;
         });

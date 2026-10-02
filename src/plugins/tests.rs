@@ -3,7 +3,8 @@
 
 use std::path::{Path, PathBuf};
 
-use super::rule::{is_generated_rule, rule_text};
+use super::Setup;
+use super::rule::{is_generated_rule, read_values, rule_text};
 use super::scaffold::{init_template, readme_template};
 use super::source::{Official, Source};
 use super::*;
@@ -94,7 +95,7 @@ fn rule_files_and_templates_name_the_plugin() {
     assert!(init.ends_with("return M\n"));
     assert!(readme_template("om-x").contains("om plugin add https://github.com/<you>/om-x"));
 
-    let rule = rule_text("window-halves", "halves and thirds");
+    let rule = rule_text("window-halves", "halves and thirds", &[]);
     assert_eq!(
         rule,
         "-- window-halves: halves and thirds\n\
@@ -127,6 +128,8 @@ async fn plugins_by_name_come_from_a_directory_of_the_official_repository() {
         None,
         true,
         &official,
+        &Setup::defaults(),
+        &mut |_| None,
     )
     .await
     .unwrap();
@@ -163,16 +166,34 @@ async fn plugins_by_name_come_from_a_directory_of_the_official_repository() {
     available(&config, &official).await.unwrap();
     no_leftovers(&lib);
 
-    let err = add(&config, &names(&["alpha"]), None, None, true, &official)
-        .await
-        .unwrap_err()
-        .to_string();
+    let err = add(
+        &config,
+        &names(&["alpha"]),
+        None,
+        None,
+        true,
+        &official,
+        &Setup::defaults(),
+        &mut |_| None,
+    )
+    .await
+    .unwrap_err()
+    .to_string();
     assert!(err.contains("not installed: alpha"), "{err}");
 
-    let err = add(&config, &names(&["gamma"]), None, None, true, &official)
-        .await
-        .unwrap_err()
-        .to_string();
+    let err = add(
+        &config,
+        &names(&["gamma"]),
+        None,
+        None,
+        true,
+        &official,
+        &Setup::defaults(),
+        &mut |_| None,
+    )
+    .await
+    .unwrap_err()
+    .to_string();
     assert!(err.contains("gamma"), "{err}");
     assert!(!lib.join("gamma").exists());
     assert!(!config.join("rules.d/gamma.lua").exists());
@@ -196,9 +217,18 @@ async fn update_follows_upstream_and_never_loses_your_edits_quietly() {
     let official = official(&repo);
     let config = tmp.path().join("config");
     let lib = config.join("lib");
-    add(&config, &names(&["alpha"]), None, None, false, &official)
-        .await
-        .unwrap();
+    add(
+        &config,
+        &names(&["alpha"]),
+        None,
+        None,
+        false,
+        &official,
+        &Setup::defaults(),
+        &mut |_| None,
+    )
+    .await
+    .unwrap();
 
     // Nothing new upstream.
     update(&lib, Some("alpha"), false, &official).await.unwrap();
@@ -276,6 +306,8 @@ async fn a_repository_root_a_tag_and_a_directory_on_disk() {
         None,
         false,
         &official,
+        &Setup::defaults(),
+        &mut |_| None,
     )
     .await
     .unwrap();
@@ -300,6 +332,8 @@ async fn a_repository_root_a_tag_and_a_directory_on_disk() {
         None,
         true,
         &official,
+        &Setup::defaults(),
+        &mut |_| None,
     )
     .await;
     assert!(err.is_err());
@@ -311,9 +345,18 @@ async fn a_repository_root_a_tag_and_a_directory_on_disk() {
     let mine = tmp.path().join("work").join("clock");
     plugin_files(&mine, "clock", "Tells the time.");
     let spec = format!("{}/", mine.display());
-    add(&config, &[spec], None, None, true, &official)
-        .await
-        .unwrap();
+    add(
+        &config,
+        &[spec],
+        None,
+        None,
+        true,
+        &official,
+        &Setup::defaults(),
+        &mut |_| None,
+    )
+    .await
+    .unwrap();
     let record = Record::read(&lib.join("clock")).unwrap();
     assert!(matches!(record.source, Source::Local { .. }));
     assert_eq!(record.version_label(), "local copy");
@@ -344,6 +387,8 @@ async fn a_plugin_needing_a_newer_om_is_refused() {
         None,
         true,
         &official(tmp.path()),
+        &Setup::defaults(),
+        &mut |_| None,
     )
     .await;
     assert!(err.is_err());
@@ -381,4 +426,164 @@ async fn your_own_plugin_keeps_its_git_work_safe() {
     remove(&config, "mine", true).await.unwrap();
     assert!(!lib.join("mine").exists());
     assert!(!config.join("rules.d/mine.lua").exists());
+}
+
+#[test]
+fn rule_files_carry_options_and_read_back() {
+    use serde_json::json;
+    let values = vec![
+        ("chord".to_string(), json!("SUPER + CTRL + ")),
+        ("toggle".to_string(), json!(false)),
+        ("keep".to_string(), json!(25)),
+    ];
+    let rule = rule_text("window-halves", "halves", &values);
+    assert_eq!(
+        rule,
+        "-- window-halves: halves\n\
+         -- Options and what it does: ~/.config/omaestro/lib/window-halves/README.md\n\
+         local window_halves = om.use(\"window-halves\")\n\
+         window_halves.setup({\n\
+         \x20 chord = \"SUPER + CTRL + \",\n\
+         \x20 toggle = false,\n\
+         \x20 keep = 25,\n\
+         })\n"
+    );
+    assert!(is_generated_rule("window-halves", &rule));
+    // A value changed by hand keeps the shape; code added does not.
+    assert!(is_generated_rule(
+        "window-halves",
+        &rule.replace("25", "30")
+    ));
+    assert!(!is_generated_rule(
+        "window-halves",
+        &format!("{rule}om.notify('x')\n")
+    ));
+
+    let back = read_values(&rule).unwrap();
+    assert_eq!(back.get("chord"), Some(&json!("SUPER + CTRL + ")));
+    assert_eq!(back.get("toggle"), Some(&json!(false)));
+    assert_eq!(back.get("keep"), Some(&json!(25)));
+    assert!(
+        read_values("local m = om.use('x')\nm.setup({ f = function() end })")
+            .unwrap_err()
+            .contains("code")
+    );
+    assert!(
+        read_values("os.execute('true')").is_err(),
+        "no os.execute in there"
+    );
+    assert_eq!(
+        read_values("local m = om.use('x') m.setup({ file = os.getenv('HOME') .. '/n' })")
+            .unwrap()
+            .get("file")
+            .and_then(|v| v.as_str())
+            .map(|s| s.ends_with("/n")),
+        Some(true)
+    );
+}
+
+#[tokio::test]
+async fn options_are_chosen_on_add_and_changed_with_configure() {
+    if !has_git() {
+        return;
+    }
+    let tmp = TempDir::new("plugins-options");
+    let mine = tmp.path().join("work").join("clock");
+    plugin_files(&mine, "clock", "Tells the time.");
+    write(
+        &mine.join("plugin.json"),
+        r#"{ "options": [
+             { "key": "chord", "type": "chord", "default": "SUPER + ALT + X" },
+             { "key": "every", "type": "interval", "default": "1h", "optional": true }
+           ] }"#,
+    );
+    let config = tmp.path().join("config");
+    let rule_file = config.join("rules.d/clock.lua");
+    let off = official(tmp.path());
+
+    // --set picks one; the other stays at its default and is not written.
+    let setup = Setup {
+        sets: vec![("chord".into(), "super+ctrl+x".into())],
+        ..Setup::defaults()
+    };
+    add(
+        &config,
+        &[mine.to_string_lossy().to_string()],
+        None,
+        None,
+        true,
+        &off,
+        &setup,
+        &mut |_| None,
+    )
+    .await
+    .unwrap();
+    let text = std::fs::read_to_string(&rule_file).unwrap();
+    assert!(text.contains("  chord = \"SUPER + CTRL + X\",\n"), "{text}");
+    assert!(!text.contains("every"), "{text}");
+
+    // Configure in the terminal: Enter keeps the chord, `none` turns the timer off.
+    let mut answers = vec!["".to_string(), "none".to_string()].into_iter();
+    let ask_setup = Setup {
+        interactive: true,
+        ..Setup::defaults()
+    };
+    configure(&config, "clock", &ask_setup, &mut move |_| answers.next())
+        .await
+        .unwrap();
+    let text = std::fs::read_to_string(&rule_file).unwrap();
+    assert!(
+        text.contains("  chord = \"SUPER + CTRL + X\",\n  every = false,\n"),
+        "{text}"
+    );
+    assert!(text.starts_with("-- clock: Tells the time.\n"), "{text}");
+
+    // A rule with more in it is the owner's: configure refuses without --force.
+    std::fs::write(&rule_file, format!("{text}om.log('mine')\n")).unwrap();
+    let err = configure(&config, "clock", &Setup::defaults(), &mut |_| None)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("has more in it than om writes"),
+        "{err}"
+    );
+    let force = Setup {
+        force: true,
+        ..Setup::defaults()
+    };
+    configure(&config, "clock", &force, &mut |_| None)
+        .await
+        .unwrap();
+    assert!(
+        !std::fs::read_to_string(&rule_file)
+            .unwrap()
+            .contains("om.log")
+    );
+
+    // --set on a plugin without a plugin.json says so, and installs nothing.
+    let plain = tmp.path().join("work").join("plain");
+    plugin_files(&plain, "plain", "No options.");
+    let err = add(
+        &config,
+        &[plain.to_string_lossy().to_string()],
+        None,
+        None,
+        true,
+        &off,
+        &setup,
+        &mut |_| None,
+    )
+    .await
+    .unwrap_err();
+    assert!(err.to_string().contains("not installed: "), "{err}");
+    assert!(!config.join("lib/plain").exists());
+    assert!(
+        configure(&config, "nope", &Setup::defaults(), &mut |_| None)
+            .await
+            .is_err()
+    );
+
+    // Removing the plugin takes its generated rule, options and all.
+    remove(&config, "clock", false).await.unwrap();
+    assert!(!rule_file.exists());
 }

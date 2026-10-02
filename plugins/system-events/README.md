@@ -19,6 +19,10 @@ Each runs only while this plugin listens to it.
 om plugin add system-events
 ```
 
+It asks for its options as it installs (Enter keeps a default);
+`om plugin configure system-events` changes them later. Both write
+`~/.config/omaestro/rules.d/system-events.lua`, which you can also edit.
+
 Options go in `~/.config/omaestro/rules.d/system-events.lua`:
 
 ```lua

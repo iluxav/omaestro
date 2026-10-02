@@ -102,3 +102,79 @@ fn the_readme_names_every_builtin_plugin() {
         );
     }
 }
+
+#[test]
+fn every_plugin_json_loads_and_describes_options_its_setup_reads() {
+    for name in shipped_plugins() {
+        let dir = shipped_plugins_dir().join(&name);
+        let Some(schema) = crate::plugins::schema::load(&dir).unwrap() else {
+            continue;
+        };
+        let init = std::fs::read_to_string(dir.join("init.lua")).unwrap();
+        for opt in &schema.options {
+            assert!(
+                init.contains(&format!("opts.{}", opt.key)),
+                "{name}: plugin.json has {} but init.lua never reads opts.{}",
+                opt.key,
+                opt.key
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn every_option_of_every_plugin_can_be_set_and_still_loads() {
+    // Each plugin with its options changed through plugin.json (the first
+    // enum choice, the other boolean, `none` where allowed, a fresh chord),
+    // written as om plugin configure writes it, then loaded.
+    use crate::plugins::schema::Kind;
+    let h = Harness::start(&[]).await;
+    let mut files = Vec::new();
+    let mut next_key = b'A';
+    for name in shipped_plugins() {
+        let dir = shipped_plugins_dir().join(&name);
+        let Some(schema) = crate::plugins::schema::load(&dir).unwrap() else {
+            continue;
+        };
+        h.install_builtin(&name);
+        let mut values = Vec::new();
+        for opt in &schema.options {
+            let answer = match opt.kind {
+                Kind::Chord if opt.optional => "none".to_string(),
+                Kind::Chord => {
+                    next_key += 1;
+                    format!("SUPER + CTRL + SHIFT + {}", next_key as char)
+                }
+                Kind::Modifiers => "SUPER + CTRL + SHIFT".to_string(),
+                Kind::Bool => match opt.default_value() {
+                    serde_json::Value::Bool(true) => "no".to_string(),
+                    _ => "yes".to_string(),
+                },
+                Kind::Number => "3".to_string(),
+                Kind::Interval => "2h".to_string(),
+                Kind::Time => "08:15".to_string(),
+                Kind::Enum => opt.options[0].clone(),
+                Kind::Path => "~/omaestro-test-path".to_string(),
+                Kind::String => opt
+                    .default
+                    .as_ref()
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("x")
+                    .to_string(),
+            };
+            let value = opt.parse(&answer).unwrap();
+            if !value.is_null() {
+                values.push((opt.key.clone(), value));
+            }
+        }
+        let rule = crate::plugins::rule_text_for_tests(&name, "test", &values);
+        files.push((format!("rules.d/{name}.lua"), rule));
+    }
+    let refs: Vec<(&str, &str)> = files
+        .iter()
+        .map(|(n, c)| (n.as_str(), c.as_str()))
+        .collect();
+    let saved = h.save(&refs).await;
+    assert!(saved.ok, "{saved:?} {:?}", h.errors());
+    assert_eq!(h.errors(), Vec::<String>::new());
+}

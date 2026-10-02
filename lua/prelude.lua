@@ -83,3 +83,98 @@ function om.use(name, url)
   package.loaded[name] = nil
   return require(name)
 end
+
+-- om.menu(chord, items, opts): a chord that opens a menu of named actions.
+-- Items are { "label", function(ctx) ... end } (or { label =, fn = }), or a
+-- function(ctx) returning them, called on each press (return nil to show
+-- nothing). An item with remember = false is never moved to the top.
+--
+-- ctx, taken when the chord is pressed, before the menu takes the focus:
+--   ctx.window      the window that had focus (nil on an empty workspace)
+--   ctx.selection   the selected text, with opts.selection = true
+--
+-- opts:
+--   title      the menu's label (default "Menu")
+--   remember   the last item picked comes first, so the chord and Enter
+--              repeat it (default true; kept in om.store per chord)
+--   refocus    give ctx.window the focus back before the item runs
+--              (default true)
+--   selection  read the selection into ctx.selection (default false)
+--
+-- Returns the handle of the hotkey, with :remove().
+local function menu_items(list, level)
+  if type(list) ~= "table" then
+    error("om.menu: items must be a list of { label, function }", level)
+  end
+  local items = {}
+  for i, item in ipairs(list) do
+    local label = type(item) == "table" and (item[1] or item.label)
+    local fn = type(item) == "table" and (item[2] or item.fn)
+    if type(label) ~= "string" or type(fn) ~= "function" then
+      error("om.menu: item " .. i .. " needs a label and a function", level)
+    end
+    items[#items + 1] = { label = label, fn = fn, remember = item.remember ~= false }
+  end
+  return items
+end
+
+function om.menu(chord, items, opts)
+  opts = opts or {}
+  if type(chord) ~= "string" then
+    error("om.menu: the first argument is a chord, like \"SUPER + ALT + P\"", 2)
+  end
+  local static = nil
+  if type(items) ~= "function" then
+    static = menu_items(items, 3)
+  end
+  local title = opts.title or "Menu"
+  local remember = opts.remember ~= false
+  local refocus = opts.refocus ~= false
+  local key = "om.menu " .. chord
+
+  return om.hotkey(chord, function()
+    local ctx = { window = om.window() }
+    if opts.selection then
+      ctx.selection = om.selection()
+    end
+    local list = static
+    if not list then
+      local made = items(ctx)
+      if made == nil then
+        return
+      end
+      -- Level 0: no position inside the prelude; the notification names
+      -- the rule that registered the menu instead.
+      list = menu_items(made, 0)
+    end
+    if #list == 0 then
+      return
+    end
+
+    local last = remember and om.store.get(key) or nil
+    local labels = {}
+    for _, item in ipairs(list) do
+      if item.label == last and item.remember then
+        table.insert(labels, 1, item.label)
+      else
+        labels[#labels + 1] = item.label
+      end
+    end
+
+    local pick = om.choose(title, labels)
+    if not pick then
+      return
+    end
+    for _, item in ipairs(list) do
+      if item.label == pick then
+        if remember and item.remember then
+          om.store.set(key, pick)
+        end
+        if refocus and ctx.window then
+          ctx.window:focus()
+        end
+        return item.fn(ctx)
+      end
+    end
+  end)
+end

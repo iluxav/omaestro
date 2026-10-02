@@ -211,3 +211,121 @@ async fn the_ai_text_plugin_rewrites_the_selection_in_place() {
     assert_eq!(h.fakes.llm.requests().len(), 1);
     assert_eq!(h.titles(), ["omaestro"]);
 }
+
+#[tokio::test(start_paused = true)]
+async fn the_ai_text_modes_menu_applies_the_picked_mode_and_remembers_it() {
+    let config = "choose_command = \"pick {label} {options}\"\nprompt_command = \"ask {label}\"\n";
+    let h = Harness::start(&[]).await;
+    h.install_builtin("ai-text");
+    let rules = "om.use('ai-text').setup({ modes = {\n\
+                   { 'Fix only', 'Fix the spelling only.' },\n\
+                   { 'More polite', 'Make it polite.' },\n\
+                   { 'Summarize', 'Summarize it.', show = true },\n\
+                 } })";
+    assert!(
+        h.save(&[("omaestro.toml", config), ("rules.d/ai.lua", rules)])
+            .await
+            .ok
+    );
+    h.fakes.hypr.set_window("firefox", "Compose");
+    h.fakes.clipboard.select("send it now");
+    h.fakes.shell.answer("More polite\n");
+    h.fakes.llm.answer("Could you send it now, please?");
+
+    assert!(h.trigger("hotkey:SUPER+ALT+J").await.ok);
+    h.settle().await;
+
+    assert!(h.errors().is_empty(), "{:?}", h.errors());
+    let requests = h.fakes.llm.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].prompt, "send it now");
+    let system = requests[0].system.clone().unwrap_or_default();
+    assert!(system.contains("Make it polite."), "{system}");
+    assert!(
+        system.starts_with("The user's message is a piece of text"),
+        "{system}"
+    );
+    let journal = h.fakes.journal.entries();
+    assert!(
+        journal.contains(
+            &"sh pick 'Rewrite' 'Fix only' 'More polite' 'Summarize' 'Custom instruction...'"
+                .to_string()
+        ),
+        "{journal:?}"
+    );
+    // The window the text came from gets the focus back before the paste.
+    assert!(
+        journal.ends_with(&[
+            "dispatch hl.dsp.focus({ window = \"address:0x1\" })".to_string(),
+            r#"clipboard = text/plain "Could you send it now, please?""#.to_string(),
+            "key CTRL+V".to_string(),
+            "clipboard cleared".to_string(),
+        ]),
+        "{journal:?}"
+    );
+
+    // The last mode used comes first; cancelling the menu asks nothing.
+    h.fakes.journal.clear();
+    h.fakes.shell.fail(Some(1), "");
+    assert!(h.trigger("hotkey:SUPER+ALT+J").await.ok);
+    h.settle().await;
+    assert_eq!(
+        h.fakes.journal.entries(),
+        ["sh pick 'Rewrite' 'More polite' 'Fix only' 'Summarize' 'Custom instruction...'"]
+    );
+    assert_eq!(h.fakes.llm.requests().len(), 1);
+
+    // A show mode notifies and leaves the text alone.
+    h.fakes.shell.answer("Summarize\n");
+    h.fakes.llm.answer(" A request to send it. ");
+    assert!(h.trigger("hotkey:SUPER+ALT+J").await.ok);
+    h.settle().await;
+    assert!(
+        h.titles().ends_with(&["Summarize".to_string()]),
+        "{:?}",
+        h.titles()
+    );
+    assert!(
+        !h.fakes
+            .journal
+            .entries()
+            .contains(&"key CTRL+V".to_string())
+    );
+
+    // A custom instruction comes from the prompt.
+    h.fakes.shell.answer("Custom instruction...\n");
+    h.fakes.shell.answer("in French\n");
+    h.fakes.llm.answer("Envoie-le maintenant.");
+    assert!(h.trigger("hotkey:SUPER+ALT+J").await.ok);
+    h.settle().await;
+    let requests = h.fakes.llm.requests();
+    assert_eq!(requests.len(), 3);
+    assert!(
+        requests[2]
+            .system
+            .clone()
+            .unwrap_or_default()
+            .contains("in French")
+    );
+    assert!(h.errors().is_empty(), "{:?}", h.errors());
+}
+
+#[tokio::test]
+async fn the_ai_text_modes_must_have_a_label_and_an_instruction() {
+    let h = Harness::start(&[]).await;
+    h.install_builtin("ai-text");
+    let saved = h
+        .save(&[(
+            "rules.d/ai.lua",
+            "om.use('ai-text').setup({ modes = { { 'Only a label' } } })",
+        )])
+        .await;
+    assert!(!saved.ok);
+    assert!(
+        h.errors()
+            .iter()
+            .any(|e| e.contains("mode 1 needs a label and an instruction")),
+        "{:?}",
+        h.errors()
+    );
+}

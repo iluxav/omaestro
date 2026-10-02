@@ -20,12 +20,13 @@ pub async fn new(config_dir: &Path, name: &str, edit: bool, rule: bool) -> Resul
     std::fs::create_dir_all(&dir).with_context(|| format!("creating {}", dir.display()))?;
     std::fs::write(dir.join("init.lua"), init_template(name))?;
     std::fs::write(dir.join("README.md"), readme_template(name))?;
+    std::fs::write(dir.join(super::schema::FILE), SCHEMA_TEMPLATE)?;
     if let Err(err) = git(Some(&dir), &["init", "--quiet"]).await {
         eprintln!("om: {err:#}; the files are there, without a git repository");
     }
     println!("created {}", dir.display());
     if rule {
-        write_rule(config_dir, name, "a plugin of your own")?;
+        write_rule(config_dir, name, "a plugin of your own", &[], false, false)?;
     } else {
         print_use(name);
     }
@@ -34,6 +35,15 @@ pub async fn new(config_dir: &Path, name: &str, edit: bool, rule: bool) -> Resul
     }
     Ok(())
 }
+
+/// The options `om plugin add` asks for and `om plugin configure` changes;
+/// one entry per key `setup(opts)` reads.
+pub const SCHEMA_TEMPLATE: &str = r#"{
+  "options": [
+    { "key": "chord", "type": "chord", "label": "The hotkey", "default": "SUPER + ALT + X" }
+  ]
+}
+"#;
 
 pub fn init_template(name: &str) -> String {
     let var = variable(name);
@@ -81,7 +91,10 @@ pub fn readme_template(name: &str) -> String {
          \n\
          ## Options\n\
          \n\
-         - `chord`: the hotkey (default `SUPER + ALT + X`).\n"
+         - `chord`: the hotkey (default `SUPER + ALT + X`).\n\
+         \n\
+         `plugin.json` describes them, so `om plugin add` asks for them and\n\
+         `om plugin configure {name}` changes them later.\n"
     )
 }
 

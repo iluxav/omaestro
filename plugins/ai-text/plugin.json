@@ -1,0 +1,58 @@
+{
+  "options": [
+    {
+      "key": "rewrite",
+      "type": "chord",
+      "label": "Rewrite the selection",
+      "default": "SUPER + ALT + J",
+      "optional": true,
+      "description": "Replaces the selection with a corrected version. With the modes menu on, it is off unless you give it a chord of its own."
+    },
+    {
+      "key": "summarize",
+      "type": "chord",
+      "label": "Summarize the selection",
+      "default": "SUPER + ALT + M",
+      "optional": true
+    },
+    {
+      "key": "translate",
+      "type": "chord",
+      "label": "Translate the selection",
+      "default": "SUPER + ALT + T",
+      "optional": true
+    },
+    {
+      "key": "language",
+      "type": "string",
+      "label": "Translate to",
+      "default": "English"
+    },
+    {
+      "key": "model",
+      "type": "string",
+      "label": "Model",
+      "optional": true,
+      "description": "A model name for every chord; none uses the one in omaestro.toml."
+    },
+    {
+      "key": "modes",
+      "type": "bool",
+      "label": "A menu of rewrite modes",
+      "default": false,
+      "description": "One chord opens a menu: fix spelling, clearer, more polite, shorter, a pitch, summarize, your own instruction."
+    },
+    {
+      "key": "menu",
+      "type": "chord",
+      "label": "Open the modes menu",
+      "default": "SUPER + ALT + J"
+    },
+    {
+      "key": "custom",
+      "type": "bool",
+      "label": "A custom-instruction row in the menu",
+      "default": true
+    }
+  ]
+}

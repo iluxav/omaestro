@@ -21,6 +21,10 @@ keybindings menu like any other bind.
 om plugin add window-mode
 ```
 
+It asks for its options as it installs (Enter keeps a default);
+`om plugin configure window-mode` changes them later. Both write
+`~/.config/omaestro/rules.d/window-mode.lua`, which you can also edit.
+
 Options go in `~/.config/omaestro/rules.d/window-mode.lua`:
 
 ```lua

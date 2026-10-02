@@ -1,0 +1,24 @@
+{
+  "options": [
+    {
+      "key": "date",
+      "type": "chord",
+      "label": "Type today's date",
+      "default": "SUPER + ALT + D",
+      "optional": true
+    },
+    {
+      "key": "date_format",
+      "type": "string",
+      "label": "Date format (os.date)",
+      "default": "%Y-%m-%d"
+    },
+    {
+      "key": "upper",
+      "type": "chord",
+      "label": "Upper-case the selection",
+      "default": "SUPER + ALT + U",
+      "optional": true
+    }
+  ]
+}

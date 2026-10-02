@@ -1,0 +1,35 @@
+{
+  "options": [
+    {
+      "key": "wake",
+      "type": "bool",
+      "label": "Notify on wake",
+      "default": true
+    },
+    {
+      "key": "usb",
+      "type": "bool",
+      "label": "Notify when a USB device is plugged in",
+      "default": true
+    },
+    {
+      "key": "battery_low",
+      "type": "number",
+      "label": "Low-battery warning at percent",
+      "default": 15,
+      "optional": true
+    },
+    {
+      "key": "network",
+      "type": "bool",
+      "label": "Log network changes",
+      "default": true
+    },
+    {
+      "key": "sleep_log",
+      "type": "bool",
+      "label": "Log going to sleep",
+      "default": true
+    }
+  ]
+}

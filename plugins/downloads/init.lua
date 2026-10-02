@@ -5,13 +5,13 @@
 --   om.use("downloads").setup({})
 --
 -- Options:
---   dir = os.getenv("HOME") .. "/Downloads"
+--   dir = "~/Downloads"
 
 local M = {}
 
 function M.setup(opts)
   opts = opts or {}
-  local dir = opts.dir or (os.getenv("HOME") .. "/Downloads")
+  local dir = (opts.dir or "~/Downloads"):gsub("^~/", os.getenv("HOME") .. "/")
   local exists = io.open(dir)
   if not exists then
     om.log("downloads: " .. dir .. " does not exist, nothing to watch")

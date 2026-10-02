@@ -666,6 +666,11 @@ wait_for "and its binds are gone" lacks_halves
 check "a repository with --path, and a directory on disk, install the same way" \
   env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$PWD" --path plugins/reminders --no-rule
 check "  (the directory)" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$PWD/plugins/web-search" --no-rule
+check "om plugin configure --set writes its options into its rule" \
+  env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin configure web-search --set chord="SUPER + CTRL + I" --defaults
+check "  the rule has the chord" grep -q 'chord = "SUPER + CTRL + I",' "$CFG/rules.d/web-search.lua"
+has_search() { nested_binds | grep -qF "omaestro: lib/web-search/init.lua"; }
+wait_for "  and the daemon binds it" has_search
 check "  both removed again" env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin remove reminders
 env OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin remove web-search >/dev/null 2>&1
 unset OMAESTRO_PLUGIN_REPO

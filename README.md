@@ -99,7 +99,7 @@ om plugin add panel window-halves text-tools  # several at once: the starter set
 
 | Plugin | What it does |
 |---|---|
-| `ai-text` | SUPER+ALT+J rewrites the selection with the local model; SUPER+ALT+M summarizes it; SUPER+ALT+T translates it |
+| `ai-text` | SUPER+ALT+J rewrites the selection with the local model, or with `modes` asks how (polite, shorter, a pitch, your own); SUPER+ALT+M summarizes it; SUPER+ALT+T translates it |
 | `window-halves` | CTRL+ALT+Left/Right/Up/Down put the window on a half, the whole screen or the center; SUPER+ALT+C floats and centers it, or tiles it back |
 | `window-mode` | SUPER+ALT+W opens a window mode: h j k l halves, H L thirds, c center, m max, f float, Esc |
 | `window-rules` | floats and centers Calculator when it opens; your own rules by class or title; a note when a monitor comes or goes |
@@ -112,10 +112,17 @@ om plugin add panel window-halves text-tools  # several at once: the starter set
 | `downloads` | a notification when something lands in `~/Downloads` |
 | `panel` | SUPER+ALT+O opens the rules panel of the Omarchy plugin |
 
-`om plugin add` writes `~/.config/omaestro/rules.d/<name>.lua`, and that
-file is where the options go; each plugin's README (in `lib/<name>/`, or
-[`plugins/`](plugins/) here) lists them. Fixes and new plugins reach you
-with `om plugin update`, no new `om` release needed:
+In a terminal, `om plugin add` asks for a plugin's options as it installs
+it: its chords, names and switches, each with its default (Enter keeps it,
+`none` turns an optional one off). Chords are checked against what Hyprland
+and your other rules already use while you choose, so a clash shows up then
+rather than as a refused rule later. `om plugin configure <name>` asks again
+whenever you like; `--set key=value` and `--defaults` skip the questions.
+The answers go into `~/.config/omaestro/rules.d/<name>.lua`, never into the
+plugin's code, so updates never get in their way. Each plugin's README (in
+`lib/<name>/`, or [`plugins/`](plugins/) here) describes the options, and
+the rule file is yours to edit too. Fixes and new plugins reach you with
+`om plugin update`, no new `om` release needed:
 
 ```lua
 -- rules.d/window-halves.lua
@@ -157,6 +164,12 @@ end)
 om.app_hotkey("^firefox$", "CTRL + S", function()
   om.notify("firefox", "saved, the omaestro way")
 end)
+
+-- A menu on one chord: pick an action, the last one comes first next time.
+om.menu("SUPER + ALT + P", {
+  { "Work layout", function() om.layout({ { class = "^firefox$", place = "left" }, { class = "^code$", place = "right" } }) end },
+  { "Today's date", function() om.type(os.date("%Y-%m-%d")) end },
+})
 
 -- A window rule with logic: Spotify goes to workspace 9 when it opens.
 om.on_open({ class = "^[Ss]potify$" }, function(win)
@@ -217,7 +230,24 @@ return M
 ```
 
 Give every option a default, let `false` switch a chord off, and describe
-the options in the README. When it is ready, push the repository to GitHub.
+the options in the README and in `plugin.json` next to `init.lua` (`om
+plugin new` starts one). With `plugin.json`, `om plugin add` and `om plugin
+configure` ask for the options, check chords, and write the answers into
+the user's rule file:
+
+```json
+{ "options": [
+  { "key": "chord",  "type": "chord", "label": "The hotkey", "default": "SUPER + ALT + X" },
+  { "key": "toggle", "type": "chord", "default": "SUPER + ALT + C", "optional": true },
+  { "key": "keep",   "type": "number", "default": 10 },
+  { "key": "every",  "type": "interval", "default": "45m", "optional": true }
+] }
+```
+
+Types: `chord`, `modifiers` (with `keys` they go in front of), `string`,
+`path`, `bool`, `number`, `interval`, `time` (`HH:MM`), `enum` (with
+`options`). `optional` allows `none`. Options that are code (a list of
+rules, a function) stay out of it and in the README. When it is ready, push the repository to GitHub.
 Others install it with:
 
 ```sh
@@ -262,6 +292,7 @@ reload button.
 | `om eval 'lua'` / `om repl` | run Lua inside the daemon; inspect state |
 | `om panel` | open or close the rules panel of the Omarchy plugin |
 | `om plugin add NAME\|REPO\|URL\|DIR...` | install plugins: one of omaestro's by name, a GitHub repo or a directory in one, any git URL (`--path`, `--ref`), or a directory on disk |
+| `om plugin configure NAME [--set k=v]` | change an installed plugin's options; `add` takes `--set` and `--defaults` too |
 | `om plugin available \| list \| new \| update \| remove` | omaestro's plugins, yours installed, start your own, take the latest, delete one |
 | `om skill install \| show` | the omaestro skill for AI coding agents (Claude Code: `~/.claude/skills/omaestro`) |
 | `om doctor [--clear]` | the session, the tools, leftover binds; `--clear` removes leftovers |
@@ -357,6 +388,12 @@ om.every("45m", fn)                              -- "30s", "5m", "1h", "1h30m"; 
 om.after("10m", fn)                              -- once; the handle has :cancel()
 om.at("17:30", fn)                               -- every day
 om.mode("SUPER + ALT + W", {h = fn, ["SHIFT + h"] = fn}, {hint = "...", exit = {"q"}, once = false})
+om.menu("SUPER + ALT + P", {                 -- a chord that opens a menu of named actions;
+  {"Work layout", function(ctx) om.layout(work) end},  -- the last one picked comes first
+  {"Lock", function() om.shell("loginctl lock-session") end},
+}, {title = "Do", selection = false, refocus = true, remember = true})
+                                                 -- ctx = {window, selection}, taken before the menu opens;
+                                                 -- items may be a function(ctx) returning the list (nil: no menu)
 om.on_typed(":sig", fn)                          -- the text is erased, then fn runs
 om.trigger("name", fn)                           -- `om trigger name`
 

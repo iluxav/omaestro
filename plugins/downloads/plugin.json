@@ -1,0 +1,10 @@
+{
+  "options": [
+    {
+      "key": "dir",
+      "type": "path",
+      "label": "Directory to watch",
+      "default": "~/Downloads"
+    }
+  ]
+}

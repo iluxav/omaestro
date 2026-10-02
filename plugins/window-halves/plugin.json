@@ -1,0 +1,24 @@
+{
+  "options": [
+    {
+      "key": "chord",
+      "type": "modifiers",
+      "keys": [
+        "Left",
+        "Right",
+        "Up",
+        "Down"
+      ],
+      "label": "Modifiers before each arrow",
+      "default": "CTRL + ALT + ",
+      "description": "Left/Right halves, Up the whole screen, Down centered. Omarchy uses every SUPER+arrow combination."
+    },
+    {
+      "key": "toggle",
+      "type": "chord",
+      "label": "Float and center, or tile back",
+      "default": "SUPER + ALT + C",
+      "optional": true
+    }
+  ]
+}

@@ -27,6 +27,7 @@ mod focus;
 mod handlers;
 mod hotkeys;
 mod loading;
+mod menu;
 mod misc;
 mod modes;
 mod overrides;
