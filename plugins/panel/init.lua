@@ -14,7 +14,7 @@ function M.setup(opts)
   opts = opts or {}
   om.hotkey(opts.chord or "SUPER + ALT + O", function()
     om.spawn("omarchy-shell shell toggle io.github.iluxav.omaestro")
-  end)
+  end, { label = "omaestro menu" })
   return M
 end
 

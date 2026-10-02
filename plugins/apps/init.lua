@@ -38,12 +38,14 @@ function M.setup(opts)
     ["SUPER + ALT + B"] = { class = "^firefox$", command = "uwsm-app -- firefox" },
   }
   for chord, app in pairs(focus) do
+    -- "^firefox$" reads as firefox.
+    local name = (app.class or app.command or "the app"):gsub("[%^%$]", "")
     om.hotkey(chord, function()
       local win = om.focus({ class = app.class, title = app.title }, app.command)
       if not win then
         om.notify("apps", (app.command or app.class or "the app") .. " did not show a window in time")
       end
-    end)
+    end, { label = app.label or ("Bring up " .. name) })
   end
 
   local layouts = opts.layouts or {
@@ -57,7 +59,7 @@ function M.setup(opts)
     om.hotkey(chord, function()
       local placed = om.layout(entries)
       om.notify("Layout", placed .. " window(s) placed")
-    end)
+    end, { label = "Arrange a layout" })
   end
 
   for app, keys in pairs(opts.app_hotkeys or {}) do

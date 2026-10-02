@@ -57,6 +57,7 @@ function M.setup(opts)
     hint = "Window mode: h j k l halves, H L thirds, c center, m max, f float, Esc"
   end
   om.mode(opts.chord or "SUPER + ALT + W", bound, {
+    label = "Window mode",
     hint = hint or nil,
     exit = opts.exit or { "q" },
     once = opts.once or false,

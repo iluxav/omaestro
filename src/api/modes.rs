@@ -25,6 +25,7 @@ pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
                 let chord = Chord::parse(&chord)
                     .map_err(|err| Error::runtime(format!("om.mode: {err}")))?;
                 let origin = caller(lua).unwrap_or_else(|| "?".to_string());
+                let label = super::triggers::label_from("mode", options.clone())?;
                 let (hint, once, exits) = match &options {
                     Some(options) => (
                         options.get::<Option<String>>("hint")?,
@@ -88,6 +89,7 @@ pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
                             noop.clone(),
                         )
                         .map_err(Error::runtime)?;
+                    registry.set_label(&mode_id, serial, label);
                     entries.push((mode_id.clone(), serial));
                     for (key_chord, handler) in bound {
                         let id = format!("{mode_id}/{}", key_chord.id());

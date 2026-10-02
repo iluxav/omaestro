@@ -208,7 +208,7 @@ function M.setup(opts)
         return nil
       end
       return items
-    end, { title = "Rewrite", selection = true, refocus = false })
+    end, { title = "Rewrite", label = "Rewrite menu", selection = true, refocus = false })
   end
 
   -- With modes, the menu's chord is J, so the direct rewrite needs a chord
@@ -223,7 +223,7 @@ function M.setup(opts)
           om.paste(unquote(answer))
         end
       end
-    end)
+    end, { label = "Rewrite the selection" })
   end
 
   local summarize = option(opts.summarize, "SUPER + ALT + M")
@@ -237,7 +237,7 @@ function M.setup(opts)
           om.notify("Summary", summary:trim())
         end
       end
-    end)
+    end, { label = "Summarize the selection" })
   end
 
   local translate = option(opts.translate, "SUPER + ALT + T")
@@ -252,7 +252,7 @@ function M.setup(opts)
           om.paste(unquote(answer))
         end
       end
-    end)
+    end, { label = "Translate to " .. language })
   end
   return M
 end

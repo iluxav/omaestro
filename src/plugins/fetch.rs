@@ -1,5 +1,6 @@
 //! Getting a plugin's files: a shallow clone (or a copy from disk) into a
-//! staging directory next to `lib/`, checked for an `init.lua`, then moved
+//! staging directory next to `lib/`, checked for an `init.lua` that loads
+//! (`check`), then moved
 //! into place with a small record of where it came from. That record,
 //! `.om-source.json`, is what `update` follows and what tells a plugin you
 //! changed from the one you installed.
@@ -10,6 +11,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
+use super::check::{self, Shape};
 use super::git;
 use super::source::{Official, Source};
 
@@ -57,6 +59,8 @@ pub struct Fetched {
     /// The plugin's own directory inside `staging`.
     pub dir: PathBuf,
     pub record: Record,
+    /// What its `init.lua` returned when loaded in the check.
+    pub shape: Shape,
 }
 
 impl Drop for Fetched {
@@ -163,6 +167,7 @@ pub async fn fetch(lib: &Path, source: &Source, official: &Official) -> Result<F
             version: None,
             files: BTreeMap::new(),
         },
+        shape: Shape { setup: false },
     };
 
     match source {
@@ -233,6 +238,7 @@ pub async fn fetch(lib: &Path, source: &Source, official: &Official) -> Result<F
     }
     let init = std::fs::read_to_string(fetched.dir.join("init.lua")).unwrap_or_default();
     super::source::check_requirement(&name, &init)?;
+    fetched.shape = check::check(&name, &fetched.dir)?;
     fetched.record.files = fingerprints(&fetched.dir)?;
     Ok(fetched)
 }

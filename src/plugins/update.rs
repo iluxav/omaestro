@@ -5,6 +5,7 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 
 use super::fetch::{self, Record};
+use super::rule::{is_generated_rule, rule_path};
 use super::source::Official;
 use super::{Installed, git, installed};
 
@@ -76,6 +77,17 @@ async fn update_copy(
         );
     }
     let fetched = fetch::fetch(lib, &record.source, official).await?;
+    // The rule om wrote for it calls setup; a version without one would
+    // break it.
+    if !fetched.shape.setup
+        && let Some(config_dir) = lib.parent()
+        && let Ok(text) = std::fs::read_to_string(rule_path(config_dir, name))
+        && is_generated_rule(name, &text)
+    {
+        bail!(
+            "the latest returns no setup function, which rules.d/{name}.lua calls; kept the installed one"
+        );
+    }
     let before = record.version_label();
     if fetched.record.files == record.files && changed.is_empty() {
         return Ok(format!("up to date ({before})"));

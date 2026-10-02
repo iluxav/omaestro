@@ -149,7 +149,11 @@ number, interval, time, enum + options; `optional` allows none; `when`/`unless`
 name a yes/no option it depends on) so `om
 plugin configure` shows it in its form, document all options in the README, push to GitHub;
 others install it with `om plugin add you/name`. A plugin's settings live in
-the user's `rules.d/<name>.lua`, never in its code.
+the user's `rules.d/<name>.lua`, never in its code. `om plugin add` and
+`update` load `init.lua` with stubbed globals first and refuse a plugin that
+does not compile, errors at load, or returns no table with `setup`; do no
+real work at its top level, only in `setup`. Give every trigger a
+`{label = "..."}` (its last argument): the panel lists rules by it.
 
 ## Panel and lifecycle
 

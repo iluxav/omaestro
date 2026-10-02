@@ -115,6 +115,7 @@ impl LuaHost {
                 id: t.id.clone(),
                 kind: t.kind.as_str().to_string(),
                 detail: t.kind.detail(),
+                label: t.label.clone(),
                 origin: t.origin.clone(),
                 enabled: registry.is_enabled(t),
                 // Filled in by the runtime, which knows the bind state.

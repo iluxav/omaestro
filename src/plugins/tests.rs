@@ -353,12 +353,65 @@ async fn a_repository_root_a_tag_and_a_directory_on_disk() {
     let record = Record::read(&lib.join("clock")).unwrap();
     assert!(matches!(record.source, Source::Local { .. }));
     assert_eq!(record.version_label(), "local copy");
+    // A version the rule could not call is refused; the installed one stays.
+    let v1 = std::fs::read_to_string(lib.join("clock/init.lua")).unwrap();
     write(&mine.join("init.lua"), "-- clock v2\nreturn {}\n");
+    assert!(update(&lib, Some("clock"), false, &official).await.is_err());
+    assert_eq!(
+        std::fs::read_to_string(lib.join("clock/init.lua")).unwrap(),
+        v1
+    );
+    let v2 = "-- clock v2\nreturn { setup = function() end }\n";
+    write(&mine.join("init.lua"), v2);
     update(&lib, Some("clock"), false, &official).await.unwrap();
     assert_eq!(
         std::fs::read_to_string(lib.join("clock/init.lua")).unwrap(),
-        "-- clock v2\nreturn {}\n"
+        v2
     );
+    no_leftovers(&lib);
+}
+
+#[tokio::test]
+async fn a_plugin_that_does_not_load_is_refused_before_it_is_installed() {
+    let tmp = TempDir::new("plugins-check");
+    let official = official(&tmp.path().join("nowhere"));
+    let config = tmp.path().join("config");
+    let lib = config.join("lib");
+    let add_dir = |dir: &Path, rule: bool| {
+        let spec = dir.to_string_lossy().to_string();
+        let config = config.clone();
+        let official = official.clone();
+        async move {
+            add(
+                &config,
+                &[spec],
+                None,
+                None,
+                rule,
+                &official,
+                &Setup::defaults(),
+            )
+            .await
+            .map_err(|err| format!("{err:#}"))
+        }
+    };
+
+    let broken = tmp.path().join("broken");
+    write(&broken.join("init.lua"), "local M = {\nreturn M\n");
+    let err = add_dir(&broken, true).await.unwrap_err();
+    assert!(err.contains("not installed: "), "{err}");
+    assert!(!lib.join("broken").exists());
+    assert!(!config.join("rules.d/broken.lua").exists());
+
+    // No setup: refused with a rule, which would call it; fine without one.
+    let bare = tmp.path().join("bare");
+    write(&bare.join("init.lua"), "return { run = function() end }\n");
+    assert!(add_dir(&bare, true).await.is_err());
+    assert!(!lib.join("bare").exists());
+    add_dir(&bare, false).await.unwrap();
+    assert!(lib.join("bare/init.lua").is_file());
+    assert!(!config.join("rules.d/bare.lua").exists());
+    no_leftovers(&lib);
 }
 
 #[tokio::test]

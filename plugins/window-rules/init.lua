@@ -56,8 +56,9 @@ function M.setup(opts)
       end
     end
     local matcher = { class = rule.class, title = rule.title }
-    om.on_open(matcher, apply)
-    om.on_focus(matcher, apply)
+    local name = rule.label or ("Window rule for " .. (rule.class or rule.title or "every window"))
+    om.on_open(matcher, apply, { label = name .. " (on open)" })
+    om.on_focus(matcher, apply, { label = name .. " (on focus)" })
   end
 
   if option(opts.notify_monitor, true) then
@@ -66,13 +67,13 @@ function M.setup(opts)
       if mon.change ~= "focused" then
         om.notify("Monitor " .. mon.change, mon.name)
       end
-    end)
+    end, { label = "Notify on monitor changes" })
   end
 
   if opts.log_focus then
     om.on_focus({}, function(win)
       om.log("focus", win.class, win.title)
-    end)
+    end, { label = "Log focus changes" })
   end
   return M
 end

@@ -22,7 +22,7 @@ function M.setup(opts)
     if change.kind == "create" then
       om.notify("Downloaded", change.path:match("[^/]+$"))
     end
-  end)
+  end, { label = "Notify on a new download" })
   return M
 end
 

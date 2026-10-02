@@ -13,6 +13,7 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 use tokio::process::Command;
 
+mod check;
 mod configure;
 pub mod fetch;
 mod form;
@@ -145,6 +146,12 @@ async fn add_one(
         );
     }
     let fetched = fetch::fetch(&lib, &source, official).await?;
+    if rule && !fetched.shape.setup {
+        bail!(
+            "{name}'s init.lua returns no table with a setup function, which the rule om writes calls; \
+             `om plugin add {spec} --no-rule` installs it to load your own way"
+        );
+    }
     let description = fetch::summary(&fetched.dir)
         .unwrap_or_else(|| format!("a plugin from {}", source.describe()));
     // Its options: the defaults, with --set on top. A bad --set stops here,

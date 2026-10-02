@@ -241,7 +241,7 @@ function M.setup(opts)
   opts = opts or {}
   om.hotkey(opts.chord or "SUPER + ALT + X", function()
     om.notify("my-plugin", "hello")
-  end)
+  end, { label = "Say hello" })
   return M
 end
 
@@ -290,16 +290,32 @@ files unless you add `--force`. A plugin that needs a newer `om` says so in
 its `init.lua` with a line `-- requires om >= 0.2.0`, and `om plugin add`
 refuses it on an older one.
 
+Before a plugin is installed or updated, `om` loads its `init.lua` on its
+own, with `om.*` and the rest of the system replaced by stand-ins, so
+nothing in it runs for real. A plugin that does not compile, raises an
+error while loading, or (when `om` writes the rule that calls it) returns no
+table with a `setup` function is refused with the file and line, and
+nothing is installed.
+
 A plugin is code that runs as you, with everything `om.*` can do. Install
 plugins from people you trust, as you would a Hammerspoon Spoon.
 
 ## The panel
 
 With the Omarchy plugin, the omaestro icon in the bar, SUPER+ALT+O or
-`om panel` opens a panel in the shell: every rule with a switch, grouped by the
-file or plugin it comes from; an app hotkey says which app and whether it is
-bound right now; the override switch above them, red while it is on; and a
-reload button.
+`om panel` opens a panel in the shell: every rule by its label, with a
+switch, grouped by the plugin or file it comes from (`init.lua` is
+"omaestro"); an app hotkey says which app and whether it is bound right now;
+the override switch above them, red while it is on; and a reload button.
+
+- A plugin's **Configure** opens `om plugin configure` in a terminal: its
+  options as a form in your editor, or its `rules.d` file when it has no
+  `plugin.json`. **Remove** uninstalls it (after asking), and keeps a plugin
+  you changed, saying so.
+- A rule file of your own has **Edit**, which opens it in Omarchy's editor.
+- **Add plugin** at the bottom takes a GitHub URL (or any git URL, or a
+  directory) and installs it with its defaults; the answer, or why not,
+  shows under it.
 
 ## The `om` command
 
@@ -307,7 +323,7 @@ reload button.
 |---|---|
 | `om status [--json]` | the daemon: who runs it, what is loaded, the last error; when nothing answers, what would start it |
 | `om start` / `om stop` / `om restart` | the daemon through its systemd unit (or whatever runs it); `restart` after a new build |
-| `om list [--json]` | every rule: id, kind, origin, and `(disabled)`, `refused: …` or `overrides: …` |
+| `om list [--json]` | every rule: id, kind, origin, its label, and `(disabled)`, `refused: …` or `overrides: …` |
 | `om enable ID` / `om disable ID` | switch a rule on or off; kept across reloads and restarts |
 | `om override [on\|off]` | let rules take chords Hyprland already has, or give them back; alone, which it is |
 | `om trigger NAME` | fire a trigger by id (a hotkey's, or a named one) |
@@ -315,7 +331,7 @@ reload button.
 | `om eval 'lua'` / `om repl` | run Lua inside the daemon; inspect state |
 | `om panel` | open or close the rules panel of the Omarchy plugin |
 | `om plugin add NAME\|REPO\|URL\|DIR...` | install plugins: one of omaestro's by name, a GitHub repo or a directory in one, any git URL (`--path`, `--ref`), or a directory on disk |
-| `om plugin configure NAME [--set k=v]` | change an installed plugin's options in a form in your editor, or with `--set` (which `add` takes too) |
+| `om plugin configure NAME [--set k=v]` | change an installed plugin's options in a form in your editor, or with `--set` (which `add` takes too); with no `plugin.json`, its rule file in your editor |
 | `om plugin available \| list \| new \| update \| remove [--all]` | omaestro's plugins, yours installed, start your own, take the latest, delete one or all |
 | `om skill install \| show` | the omaestro skill for AI coding agents (Claude Code: `~/.claude/skills/omaestro`) |
 | `om doctor [--clear]` | the session, the tools, leftover binds; `--clear` removes leftovers |
@@ -394,11 +410,14 @@ readable and writable only by you.
 
 Everything lives under `om`. Triggers register a handler and return a handle
 with `:remove()`; actions return their result and raise a Lua error on
-failure.
+failure. Every trigger takes a last, optional `{label = "..."}`: the rule's
+name in the panel and `om list` (without one, the panel shows the chord or
+what sets the rule off).
 
 ```lua
 -- Triggers
 om.hotkey("SUPER + ALT + J", fn)                 -- a chord ("SUPER ALT, J" works too)
+om.hotkey("SUPER + ALT + J", fn, {label = "Rewrite the selection"})  -- named, for the panel
 om.app_hotkey("^firefox$", "CTRL + S", fn)       -- only while a matching window has focus; or {class=, title=}
 om.on_focus({class = "^firefox$"}, fn)           -- fn(win); matchers are Lua patterns, both must match
 om.on_blur(matcher, fn) om.on_open(matcher, fn) om.on_close(matcher, fn) om.on_title(matcher, fn)
@@ -413,14 +432,14 @@ om.on_file(path, fn)                             -- fn({path, kind}); recursive;
 om.every("45m", fn)                              -- "30s", "5m", "1h", "1h30m"; a tick still running is skipped
 om.after("10m", fn)                              -- once; the handle has :cancel()
 om.at("17:30", fn)                               -- every day
-om.mode("SUPER + ALT + W", {h = fn, ["SHIFT + h"] = fn}, {hint = "...", exit = {"q"}, once = false})
+om.mode("SUPER + ALT + W", {h = fn, ["SHIFT + h"] = fn}, {hint = "...", exit = {"q"}, once = false, label = "..."})
 om.menu("SUPER + ALT + P", {                 -- a chord that opens a menu of named actions;
   {"Work layout", function(ctx) om.layout(work) end},  -- the last one picked comes first
   {"Lock", function() om.shell("loginctl lock-session") end},
-}, {title = "Do", selection = false, refocus = true, remember = true})
+}, {title = "Do", selection = false, refocus = true, remember = true})  -- title is its label too
                                                  -- ctx = {window, selection}, taken before the menu opens;
                                                  -- items may be a function(ctx) returning the list (nil: no menu)
-om.hotkey("SUPER + ALT + O", om.panel)           -- om.panel() opens or closes the rules panel
+om.hotkey("SUPER + ALT + O", om.panel)           -- om.panel() opens or closes the rules panel ("omaestro menu")
 om.on_typed(":sig", fn)                          -- the text is erased, then fn runs
 om.trigger("name", fn)                           -- `om trigger name`
 

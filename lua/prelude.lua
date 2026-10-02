@@ -94,7 +94,9 @@ end
 --   ctx.selection   the selected text, with opts.selection = true
 --
 -- opts:
---   title      the menu's label (default "Menu")
+--   title      the menu's label (default "Menu"); also the rule's name in
+--              the panel, unless label says another
+--   label      the rule's name in the panel and `om list`
 --   remember   the last item picked comes first, so the chord and Enter
 --              repeat it (default true; kept in om.store per chord)
 --   refocus    give ctx.window the focus back before the item runs
@@ -176,7 +178,7 @@ function om.menu(chord, items, opts)
         return item.fn(ctx)
       end
     end
-  end)
+  end, { label = opts.label or opts.title })
 end
 
 -- om.panel(): opens or closes the rules panel of the Omarchy plugin, the

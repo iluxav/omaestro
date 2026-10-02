@@ -192,6 +192,8 @@ pub struct Trigger {
     pub kind: TriggerKind,
     /// Where the rule registered it, `rules.d/foo.lua:12`.
     pub origin: String,
+    /// What the rule calls it (`{label = ...}`), for the panel and `om list`.
+    pub label: Option<String>,
     pub handler: Function,
     /// Held while the handler runs: one run at a time per trigger.
     pub gate: Arc<tokio::sync::Mutex<()>>,
@@ -289,6 +291,7 @@ impl Registry {
             serial,
             kind,
             origin,
+            label: None,
             handler,
             gate: Arc::default(),
         };
@@ -332,6 +335,15 @@ impl Registry {
     }
 
     /// The trigger with this id, switched on or off.
+    /// Names the registration `serial` of `id`.
+    pub fn set_label(&mut self, id: &str, serial: u64, label: Option<String>) {
+        if let Some(trigger) = self.triggers.get_mut(id)
+            && trigger.serial == serial
+        {
+            trigger.label = label;
+        }
+    }
+
     pub fn get(&self, id: &str) -> Option<Trigger> {
         self.triggers.get(id).cloned()
     }

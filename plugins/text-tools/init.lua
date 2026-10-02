@@ -26,6 +26,7 @@ function M.setup(opts)
   opts = opts or {}
 
   local snippets = opts.snippets
+  local labels = {}
   if not snippets then
     snippets = {}
     local date = option(opts.date, "SUPER + ALT + D")
@@ -33,9 +34,13 @@ function M.setup(opts)
       snippets[date] = function()
         return os.date(opts.date_format or "%Y-%m-%d")
       end
+      labels[date] = "Type today's date"
     end
   end
   for chord, snippet in pairs(snippets) do
+    local label = labels[chord]
+      or (type(snippet) == "string" and ('Type "' .. snippet:sub(1, 30) .. '"'))
+      or "Type a snippet"
     om.hotkey(chord, function()
       local text = snippet
       if type(snippet) == "function" then
@@ -44,7 +49,7 @@ function M.setup(opts)
       if text and text ~= "" then
         om.type(text)
       end
-    end)
+    end, { label = label })
   end
 
   local upper = option(opts.upper, "SUPER + ALT + U")
@@ -54,7 +59,7 @@ function M.setup(opts)
       if text ~= "" then
         om.paste(text:upper())
       end
-    end)
+    end, { label = "Upper-case the selection" })
   end
   return M
 end

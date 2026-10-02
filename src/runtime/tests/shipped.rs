@@ -49,6 +49,14 @@ async fn all_builtin_plugins_load_together() {
 
     let rows: Vec<TriggerRow> =
         serde_json::from_value(h.ask(Request::List).await.data.unwrap()).unwrap();
+    // The panel shows each rule by its label; the keys inside a mode go
+    // with the mode's row.
+    let unnamed: Vec<&str> = rows
+        .iter()
+        .filter(|r| r.label.is_none() && r.kind != "mode_key" && r.kind != "mode_exit")
+        .map(|r| r.id.as_str())
+        .collect();
+    assert!(unnamed.is_empty(), "rules with no label: {unnamed:?}");
     let mut kinds: Vec<&str> = rows.iter().map(|r| r.kind.as_str()).collect();
     kinds.sort();
     kinds.dedup();

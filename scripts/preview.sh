@@ -23,6 +23,7 @@ cat >"$TMP/hyprland.lua" <<'EOF'
 hl.monitor({ output = "", mode = "1400x1150@60", position = "auto", scale = 1 })
 hl.config({
   misc = { disable_hyprland_logo = true, disable_splash_rendering = true, disable_watchdog_warning = true },
+  cursor = { invisible = true },
   ecosystem = { no_update_news = true, no_donation_nag = true },
   xwayland = { enabled = false },
 })
@@ -42,6 +43,8 @@ done
 [[ -n "$SIG" && "$SIG" != "$REAL_SIG" ]] || { echo "no nested instance"; exit 1; }
 in_nested() { WAYLAND_DISPLAY="$WL" HYPRLAND_INSTANCE_SIGNATURE="$SIG" "$@"; }
 for _ in $(seq 50); do in_nested hyprctl -j monitors >/dev/null 2>&1 && break; sleep 0.1; done
+# The pointer in a corner, off the card, so no row is shown hovered.
+in_nested hyprctl dispatch 'hl.dsp.cursor.move({ x = 1, y = 1 })' >/dev/null
 
 # The nested compositor is a window of the real session, sized by its
 # layout; float it and make it tall enough for the whole card (the same
@@ -59,16 +62,19 @@ if [[ -n "$addr" ]]; then
   sleep 1.5
 fi
 
-# Rules: a few plugins and one hand-written app hotkey.
-for p in window-halves ai-text panel; do OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$p" >/dev/null; done
+# Rules as a user has them: init.lua's panel chord, a few plugins (from this
+# checkout, so what is shown is what will ship), and one hand-written app
+# hotkey.
+printf 'om.hotkey("SUPER + ALT + O", om.panel)\n' >"$CFG/init.lua"
+for p in window-halves ai-text text-tools; do OMAESTRO_CONFIG_DIR="$CFG" "$OM" plugin add "$PWD/plugins/$p" >/dev/null; done
 cat >"$CFG/rules.d/firefox.lua" <<'EOF'
-om.app_hotkey("^firefox$", "CTRL + S", function() om.notify("firefox", "saved") end)
+om.app_hotkey("^firefox$", "CTRL + S", function() om.notify("firefox", "saved") end, { label = "Save in Firefox" })
 EOF
 env WAYLAND_DISPLAY="$WL" HYPRLAND_INSTANCE_SIGNATURE="$SIG" XDG_STATE_HOME="$TMP/state" \
   "$OM" daemon --foreground --config-dir "$CFG" >"$TMP/daemon.log" 2>&1 &
 daemon_pid=$!
 for _ in $(seq 50); do "$OM" status >/dev/null 2>&1 && break; sleep 0.1; done
-for _ in $(seq 50); do [[ "$("$OM" list 2>/dev/null | wc -l)" -ge 10 ]] && break; sleep 0.1; done
+for _ in $(seq 50); do [[ "$("$OM" list 2>/dev/null | wc -l)" -ge 12 ]] && break; sleep 0.1; done
 
 SHELL_SRC="${OMARCHY_PATH:-/usr/share/omarchy}/shell"
 mkdir -p "$TMP/qs"; ln -s "$SHELL_SRC/Commons" "$TMP/qs/Commons"; ln -s "$SHELL_SRC/Ui" "$TMP/qs/Ui"
@@ -88,10 +94,10 @@ env WAYLAND_DISPLAY="$WL" HYPRLAND_INSTANCE_SIGNATURE="$SIG" OMAESTRO_BIN="$OM" 
 qs_pid=$!
 for _ in $(seq 150); do
   n="$(in_nested qs ipc -p "$TMP/qs" call preview count 2>/dev/null)"
-  [[ "${n:-0}" -ge 9 ]] && break
+  [[ "${n:-0}" -ge 12 ]] && break
   sleep 0.1
 done
-echo "panel shows ${n:-0} rules"
+echo "panel shows ${n:-0} rules; the pointer is at $(in_nested hyprctl cursorpos 2>/dev/null)"
 sleep 1
 in_nested grim "$TMP/full.png"; cp "$TMP/full.png" "${OUT%.png}-full.png"
 # Keep the card: trim the uniform scrim, then a little of it back as a frame.

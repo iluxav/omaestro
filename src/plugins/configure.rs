@@ -226,7 +226,13 @@ pub fn edit_in_editor(text: &str) -> Result<String> {
             command[0]
         );
     }
-    let path = std::env::temp_dir().join(format!("omaestro-options-{}.ini", std::process::id()));
+    // A rule file (Lua) or the options form (key = value lines), named so
+    // the editor highlights it.
+    let extension = if text.starts_with("--") { "lua" } else { "ini" };
+    let path = std::env::temp_dir().join(format!(
+        "omaestro-options-{}.{extension}",
+        std::process::id()
+    ));
     std::fs::write(&path, text).with_context(|| format!("writing {}", path.display()))?;
     if !terminal {
         println!(
@@ -393,6 +399,29 @@ fn edit_loop(
     }
 }
 
+/// A plugin with no `plugin.json`: its rule file itself in the editor (the
+/// one `add` writes, when there is none yet). Its options are Lua, written
+/// as its README says.
+fn edit_rule(config_dir: &Path, name: &str, dir: &Path, edit: Editor<'_>) -> Result<()> {
+    let path = rule_path(config_dir, name);
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|_| {
+        let description = super::fetch::summary(dir).unwrap_or_else(|| "a plugin".to_string());
+        super::rule::rule_text(name, &description, &[])
+    });
+    let saved = edit(&text)?;
+    if saved == text && path.exists() {
+        println!("{name}: nothing changed");
+        return Ok(());
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    std::fs::write(&path, saved).with_context(|| format!("writing {}", path.display()))?;
+    println!("saved {}; the rules reload", path.display());
+    Ok(())
+}
+
 /// `om plugin configure`: with `--set`, those options; without, the form
 /// in the editor. Either way the rule file is rewritten and the result
 /// shown.
@@ -410,10 +439,13 @@ pub async fn configure(
         );
     }
     let Some(schema) = schema::load(&dir)? else {
-        bail!(
-            "{name} has no {}: its options are in lib/{name}/README.md and go in rules.d/{name}.lua",
-            schema::FILE
-        );
+        if !setup.sets.is_empty() {
+            bail!(
+                "{name} has no {}, so --set has nothing to set; its options are in lib/{name}/README.md",
+                schema::FILE
+            );
+        }
+        return edit_rule(config_dir, name, &dir, edit);
     };
     let path = rule_path(config_dir, name);
     let (start, description) = match std::fs::read_to_string(&path) {

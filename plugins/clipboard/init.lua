@@ -39,7 +39,7 @@ function M.setup(opts)
         table.remove(clips)
       end
       om.store.set("clips", clips)
-    end)
+    end, { label = "Keep a clipboard history" })
     om.hotkey(history, function()
       local clips = om.store.get("clips", {})
       if #clips == 0 then
@@ -57,7 +57,7 @@ function M.setup(opts)
           return
         end
       end
-    end)
+    end, { label = "Clipboard history" })
   end
 
   local notes = option(opts.notes, "SUPER + ALT + N")
@@ -80,7 +80,7 @@ function M.setup(opts)
       out:write("\n## ", os.date("%Y-%m-%d %H:%M"), "\n\n", text, "\n")
       out:close()
       om.notify("Clip", "Saved " .. #text .. " characters to " .. file:match("[^/]+$"))
-    end)
+    end, { label = "Notes" })
   end
   return M
 end

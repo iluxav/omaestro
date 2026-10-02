@@ -405,6 +405,11 @@ ShellRoot {
     function askOverride(): void { panel.item.askOverride() }
     function widget(): string { return widget.item ? widget.item.tooltip + "|" + widget.item.attention : "" }
     function cancelOverride(): void { panel.item.cancelOverride() }
+    function labels(): string {
+      return panel.item.grouped.map(function(r) { return r.section + ":" + panel.item.label(r) }).join(",")
+    }
+    function add(url: string): void { panel.item.addPlugin(url) }
+    function remove(plugin: string): void { panel.item.removing = plugin; panel.item.remove() }
   }
 }
 EOF
@@ -455,6 +460,35 @@ override is on: rules take chords Hyprland already has|true"
     expect "and the daemon agrees" "override:  on (rules take chords Hyprland already has)" sh -c "'$OM' status | grep '^override'"
     panel_ipc setOverride false >/dev/null
     wait_for "and off again" override_is false
+
+    # A plugin's rules by their labels under its name; init.lua's panel
+    # chord under omaestro's.
+    mkdir -p "$CFG/lib"
+    cp -r plugins/web-search "$CFG/lib/web-search"
+    printf 'om.use("web-search").setup({})\n' >"$CFG/rules.d/web-search.lua"
+    printf 'om.hotkey("SUPER + ALT + O", om.panel)\n' >"$CFG/init.lua"
+    labels_are() { [[ "$(panel_ipc labels)" == "$1" ]]; }
+    panel_ipc reload >/dev/null
+    wait_for "rules show by their labels, under omaestro and the plugin's name" \
+      labels_are "omaestro:omaestro menu,web-search  (plugin):Search the web"
+    if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+      sleep 0.5
+      in_nested grim "$SMOKE_SHOTS/panel-plugins.png" && echo "      screenshot: $SMOKE_SHOTS/panel-plugins.png"
+    fi
+    panel_ipc add "$PWD/plugins/text-tools" >/dev/null
+    wait_for "the add field installs a plugin and lists its rules" \
+      labels_are "omaestro:omaestro menu,text-tools  (plugin):Type today's date,text-tools  (plugin):Upper-case the selection,web-search  (plugin):Search the web"
+    if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+      in_nested grim "$SMOKE_SHOTS/panel-added.png" && echo "      screenshot: $SMOKE_SHOTS/panel-added.png"
+    fi
+    panel_ipc add "$TMP/not-a-plugin" >/dev/null
+    add_refused() { [[ "$(panel_ipc message)" == *"is not a directory"* ]]; }
+    wait_for "a bad one says why" add_refused
+    panel_ipc remove text-tools >/dev/null
+    wait_for "remove uninstalls it" \
+      labels_are "omaestro:omaestro menu,web-search  (plugin):Search the web"
+    check "and its files are gone" test ! -e "$CFG/lib/text-tools"
+    rm -rf "$CFG/lib" "$CFG/rules.d/web-search.lua"
   else
     fail "the panel did not load (quickshell log follows)"
     tail -n 30 "$TMP/qs.log"

@@ -79,6 +79,9 @@ pub struct TriggerRow {
     pub kind: String,
     /// The chord, matcher, interval, time, text or path the rule gave.
     pub detail: String,
+    /// What the rule calls it (`{label = ...}`), when it said.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
     pub origin: String,
     pub enabled: bool,
     /// Why a hotkey has no bind right now: a chord somebody else holds, or

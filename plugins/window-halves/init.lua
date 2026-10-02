@@ -18,6 +18,16 @@
 
 local M = {}
 
+-- What each place is called in the panel.
+local NAMES = {
+  left = "Left half", right = "Right half", top = "Top half", bottom = "Bottom half",
+  ["top-left"] = "Top-left corner", ["top-right"] = "Top-right corner",
+  ["bottom-left"] = "Bottom-left corner", ["bottom-right"] = "Bottom-right corner",
+  ["left-third"] = "Left third", ["middle-third"] = "Middle third", ["right-third"] = "Right third",
+  ["left-two-thirds"] = "Left two thirds", ["right-two-thirds"] = "Right two thirds",
+  center = "Center", max = "Fill the screen",
+}
+
 local function option(value, default)
   if value == nil then
     return default
@@ -36,7 +46,7 @@ function M.setup(opts)
       if win then
         win:place(place)
       end
-    end)
+    end, { label = NAMES[place] or "Place the window" })
   end
 
   local toggle = option(opts.toggle, "SUPER + ALT + C")
@@ -50,7 +60,7 @@ function M.setup(opts)
       if not win.floating then
         om.dispatch("hl.dsp.window.center()")
       end
-    end)
+    end, { label = "Float and center, or tile back" })
   end
   return M
 end

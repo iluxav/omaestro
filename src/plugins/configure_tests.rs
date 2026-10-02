@@ -296,3 +296,51 @@ fn options_that_only_apply_with_a_switch_do_not_clash_without_it() {
             .contains("depends on b")
     );
 }
+
+#[tokio::test]
+async fn a_plugin_without_options_opens_its_rule_file() {
+    let tmp = crate::testutil::TempDir::new("configure-no-schema");
+    let config = tmp.path();
+    std::fs::create_dir_all(config.join("lib/apps")).unwrap();
+    std::fs::write(
+        config.join("lib/apps/init.lua"),
+        "return { setup = function() end }",
+    )
+    .unwrap();
+    std::fs::write(
+        config.join("lib/apps/README.md"),
+        "# apps\n\nBrings apps up.\n",
+    )
+    .unwrap();
+
+    // No rule yet: the one `add` would write, as saved.
+    let (mut edit, shown) = editor(vec![Box::new(|text: &str| {
+        text.replace("setup({})", "setup({ focus = {} })")
+    })]);
+    configure(config, "apps", &Setup::defaults(), &mut edit)
+        .await
+        .unwrap();
+    assert!(shown.lock().unwrap()[0].starts_with("-- apps: Brings apps up.\n"));
+    let rule = std::fs::read_to_string(config.join("rules.d/apps.lua")).unwrap();
+    assert!(rule.ends_with("apps.setup({ focus = {} })\n"), "{rule}");
+
+    // Then the file as it is; unchanged, nothing is written.
+    let (mut edit, shown) = editor(vec![Box::new(|text: &str| text.to_string())]);
+    configure(config, "apps", &Setup::defaults(), &mut edit)
+        .await
+        .unwrap();
+    assert_eq!(shown.lock().unwrap()[0], rule);
+
+    let sets = Setup {
+        sets: vec![("focus".into(), "x".into())],
+        ..Setup::defaults()
+    };
+    let (mut edit, _) = editor(vec![]);
+    let err = configure(config, "apps", &sets, &mut edit)
+        .await
+        .unwrap_err();
+    assert!(
+        err.to_string().contains("--set has nothing to set"),
+        "{err}"
+    );
+}

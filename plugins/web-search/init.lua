@@ -29,7 +29,7 @@ function M.setup(opts)
       return
     end
     om.spawn(open .. " '" .. base .. encode(query) .. "'")
-  end)
+  end, { label = "Search the web" })
   return M
 end
 

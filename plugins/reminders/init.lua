@@ -32,22 +32,22 @@ function M.setup(opts)
       om.store.set("reminders", n)
       om.after(minutes .. "m", function()
         om.notify("Reminder " .. n, minutes .. " minutes are up")
-      end)
-    end)
+      end, { label = "Reminder " .. n })
+    end, { label = "Remind me in N minutes" })
   end
 
   local stretch = option(opts.stretch, "45m")
   if stretch then
     om.every(stretch, function()
       om.notify("Stretch", stretch .. " at the desk. Stand up for a minute.")
-    end)
+    end, { label = "Stand-up reminder every " .. stretch })
   end
 
   local daily = option(opts.daily, { ["17:30"] = "Half an hour left. What is unfinished?" })
   for time, text in pairs(daily or {}) do
     om.at(time, function()
       om.notify(time, text)
-    end)
+    end, { label = "Daily note at " .. time })
   end
   return M
 end

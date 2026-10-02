@@ -24,6 +24,7 @@ async fn named_trigger_runs_its_handler() {
             id: "greet".into(),
             kind: "trigger".into(),
             detail: String::new(),
+            label: None,
             origin: "init.lua:1".into(),
             enabled: true,
             problem: None,
@@ -192,4 +193,49 @@ async fn slow_handler_is_not_killed() {
     h.settle().await;
     assert_eq!(h.titles(), ["started", "finished"]);
     assert!(h.errors().is_empty());
+}
+
+#[tokio::test]
+async fn a_rule_names_its_trigger_with_a_label() {
+    let rules = "om.hotkey('SUPER + ALT + J', function() end, { label = 'Rewrite the selection' })\n\
+                 om.hotkey('SUPER + ALT + O', om.panel)\n\
+                 om.every('5m', function() end, { label = ' Stretch ' })\n\
+                 om.on_usb(function() end, { label = 'USB plugged in' })\n\
+                 om.menu('SUPER + ALT + P', { { 'a', function() end } }, { title = 'Projects' })\n\
+                 om.mode('SUPER + ALT + W', { h = function() end }, { label = 'Window mode' })\n\
+                 om.trigger('plain', function() end)\n";
+    let h = Harness::start(&[("init.lua", rules)]).await;
+    assert!(h.errors().is_empty(), "{:?}", h.errors());
+    let rows: Vec<TriggerRow> =
+        serde_json::from_value(h.ask(Request::List).await.data.unwrap()).unwrap();
+    let label = |id: &str| {
+        rows.iter()
+            .find(|row| row.id == id)
+            .unwrap_or_else(|| panic!("no {id} in {rows:?}"))
+            .label
+            .clone()
+    };
+    assert_eq!(
+        label("hotkey:SUPER+ALT+J").as_deref(),
+        Some("Rewrite the selection")
+    );
+    assert_eq!(
+        label("hotkey:SUPER+ALT+O").as_deref(),
+        Some("omaestro menu")
+    );
+    assert_eq!(label("every:5m").as_deref(), Some("Stretch"));
+    assert_eq!(label("on_usb").as_deref(), Some("USB plugged in"));
+    assert_eq!(label("hotkey:SUPER+ALT+P").as_deref(), Some("Projects"));
+    assert_eq!(label("mode:SUPER+ALT+W").as_deref(), Some("Window mode"));
+    assert_eq!(label("plain"), None);
+
+    let h = Harness::start(&[(
+        "init.lua",
+        "om.hotkey('SUPER + ALT + J', function() end, { label = true })",
+    )])
+    .await;
+    assert_eq!(
+        h.errors(),
+        ["init.lua:1: om.hotkey: label is text, not boolean (no rules loaded)"]
+    );
 }

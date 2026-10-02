@@ -26,13 +26,13 @@ function M.setup(opts)
   if option(opts.sleep_log, true) then
     om.on_sleep(function()
       om.log("going to sleep")
-    end)
+    end, { label = "Log going to sleep" })
   end
 
   if option(opts.wake, true) then
     om.on_wake(function()
       om.notify("Welcome back", os.date("%H:%M"))
-    end)
+    end, { label = "Notify on wake" })
   end
 
   if option(opts.usb, true) then
@@ -41,7 +41,7 @@ function M.setup(opts)
       if dev.action == "add" then
         om.notify("USB", "plugged in: " .. dev.device:match("[^/]+$"))
       end
-    end)
+    end, { label = "Notify when a USB device is plugged in" })
   end
 
   local low = option(opts.battery_low, 15)
@@ -51,14 +51,14 @@ function M.setup(opts)
       if b.status == "Discharging" and b.percent <= low then
         om.notify("Battery", b.percent .. "%, find a charger")
       end
-    end)
+    end, { label = "Low-battery warning" })
   end
 
   if option(opts.network, true) then
     -- {line = "wlan0: connected"}
     om.on_network(function(n)
       om.log("network", n.line)
-    end)
+    end, { label = "Log network changes" })
   end
   return M
 end

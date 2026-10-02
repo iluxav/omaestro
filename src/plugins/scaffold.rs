@@ -61,7 +61,7 @@ pub fn init_template(name: &str) -> String {
          \x20 opts = opts or {{}}\n\
          \x20 om.hotkey(opts.chord or \"SUPER + ALT + X\", function()\n\
          \x20   om.notify(\"{name}\", \"hello from {name}\")\n\
-         \x20 end)\n\
+         \x20 end, {{ label = \"Say hello\" }})\n\
          \x20 return M\n\
          end\n\
          \n\

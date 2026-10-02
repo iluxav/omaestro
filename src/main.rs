@@ -540,8 +540,13 @@ fn print_list(response: Response, json: bool) -> Result<()> {
         } else {
             String::new()
         };
+        let label = row
+            .label
+            .as_ref()
+            .map(|label| format!("  \"{label}\""))
+            .unwrap_or_default();
         println!(
-            "{:id_width$}  {:kind_width$}  {}{note}",
+            "{:id_width$}  {:kind_width$}  {}{label}{note}",
             row.id, row.kind, row.origin
         );
     }

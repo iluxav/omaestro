@@ -27,6 +27,7 @@ async fn hotkey_is_bound_in_hyprland_and_fires_its_handler() {
             id: "hotkey:SUPER+J".into(),
             kind: "hotkey".into(),
             detail: "SUPER + J".into(),
+            label: None,
             origin: "init.lua:1".into(),
             enabled: true,
             problem: None,

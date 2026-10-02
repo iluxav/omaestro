@@ -171,6 +171,7 @@ mod tests {
             id: id.to_string(),
             kind: kind.to_string(),
             detail: id.split_once(':').map(|(_, d)| d).unwrap_or("").to_string(),
+            label: None,
             origin: "init.lua:1".to_string(),
             enabled: true,
             problem: None,
