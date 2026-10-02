@@ -432,8 +432,9 @@ Item {
           }
 
           // Who wins a chord: a setting of the whole panel, above the rules
-          // and not shaped like one. Off, Hyprland's own binds win and a rule
-          // on one of them is refused; on (after a warning), the rules win.
+          // and not shaped like one. Off, the binds Omarchy and the user's
+          // config already have win and a rule on one of them is refused;
+          // on (after a warning), the rules take them.
           RowLayout {
             Layout.fillWidth: true
             spacing: Style.spacing.lg
@@ -453,10 +454,8 @@ Item {
                 width: parent.width
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
-                text: root.overrideOn
-                  ? "Override on: rules take over Hyprland's own shortcuts"
-                    + (root.takenCount > 0 ? " (" + root.takenCount + " taken)" : "")
-                  : "Override off: Hyprland's own shortcuts win"
+                text: "Override existing shortcuts"
+                  + (root.overrideOn && root.takenCount > 0 ? " (" + root.takenCount + " taken over)" : "")
                 color: root.overrideOn ? Color.urgent : Color.popups.text
                 font.family: Style.font.family
                 font.pixelSize: Style.font.body
@@ -465,10 +464,10 @@ Item {
               Text {
                 width: parent.width
                 textFormat: Text.PlainText
-                elide: Text.ElideRight
+                wrapMode: Text.Wrap
                 text: root.overrideOn
-                  ? "A replaced shortcut comes back when its rule goes or this is turned off"
-                  : "A rule on a chord Omarchy or your config already uses is refused and says so"
+                  ? "On: rules take those chords; the originals come back when this is turned off"
+                  : "Off: a rule on a chord Omarchy or your config already uses is not bound"
                 color: Qt.darker(Color.popups.text, 1.4)
                 font.family: Style.font.family
                 font.pixelSize: Style.font.caption
@@ -612,9 +611,9 @@ Item {
       ConfirmDialog {
         id: confirm
         anchors.fill: parent
-        message: "Rules will take over shortcuts Omarchy or your Hyprland config already use. "
-          + "A replaced shortcut stops working while its rule is loaded and switched on; "
-          + "it comes back (Hyprland reloads its config) when the rule goes or this is turned off."
+        message: "Rules will take chords that Omarchy or your Hyprland config already use. "
+          + "Those shortcuts stop working while the rule is on, and come back when it is "
+          + "removed or switched off, or when override is turned off."
         confirmText: "Override"
         background: Color.popups.background
         foreground: Color.popups.text

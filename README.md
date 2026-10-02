@@ -5,7 +5,7 @@
 <p align="center">
   <a href="https://github.com/iluxav/omaestro/actions/workflows/ci.yml"><img src="https://github.com/iluxav/omaestro/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/iluxav/omaestro/releases"><img src="https://img.shields.io/github/v/release/iluxav/omaestro?label=release" alt="Release"></a>
-  <a href="https://omarchy.org"><img src="https://img.shields.io/badge/Omarchy-plugin-e07a5f" alt="Omarchy plugin"></a>
+  <a href="https://plugins.omarchy.org/plugin.html?id=io.github.iluxav.omaestro"><img src="https://img.shields.io/badge/Omarchy-plugin-e07a5f" alt="omaestro on the Omarchy plugin marketplace"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
 </p>
 
@@ -17,6 +17,10 @@ model, a window that floats where you want it the moment it opens, a key
 chord that means one thing in Firefox and nothing anywhere else, a reminder
 every 45 minutes. One daemon, one `om` command, a panel in the Omarchy
 shell, and plugins to start from.
+
+<p align="center">
+  <img src="preview.png" width="480" alt="The omaestro panel in the Omarchy shell: rules by name, grouped by plugin, each with a switch; Configure and Remove per plugin; a field to add a plugin by its URL">
+</p>
 
 ```lua
 -- Select text anywhere, press SUPER+ALT+J, get it back rewritten in place.
@@ -375,10 +379,11 @@ show in `hyprctl binds` and Omarchy's keybindings menu as
 `omaestro: rules.d/x.lua:3`.
 
 **Who wins a chord.** Hyprland runs every bind on a chord, so omaestro
-checks first. By default Hyprland's own binds win: a rule on a chord Omarchy
-or your `bindings.lua` already uses is refused with a notification, stays
-listed as `refused`, and binds the moment the chord is free (free it with
-`hl.unbind("SUPER + J")` in your `bindings.lua`). `om override on` reverses
+checks first. By default the shortcuts you already have come first: a rule
+on a chord Omarchy or your `bindings.lua` already uses is refused with a
+notification, stays listed as `refused`, and binds the moment the chord is
+free (free it with `hl.unbind("SUPER + J")` in your `bindings.lua`). `om
+override on` (the panel's "Override existing shortcuts" switch) reverses
 that: rules take their chords, a notification says what was replaced, and
 the replaced bind comes back (Hyprland reloads its config) when the rule
 goes, is disabled, override is turned off or the daemon exits.
