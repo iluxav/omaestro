@@ -16,6 +16,9 @@ tokio::task_local! {
     /// When the hotkey that started this handler was pressed, if one did.
     /// Injection waits for the user's fingers to leave the modifiers.
     pub static HOTKEY_PRESSED: Option<Instant>;
+    /// The `om.busy` notification of this handler run, taken down when the
+    /// run ends.
+    pub static BUSY: std::sync::Arc<std::sync::Mutex<Option<u32>>>;
 }
 
 /// Runs one handler to completion. One run at a time per trigger: a second

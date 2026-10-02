@@ -90,30 +90,55 @@ impl Clipboard for WlClipboard {
     }
 
     fn watch(&self, events: mpsc::Sender<Event>) -> std::result::Result<Watching, String> {
-        // `wl-paste --watch` runs a command on every change; a line of output
-        // per change is all the daemon needs, it reads the content itself.
-        let mut child = tokio::process::Command::new(PASTE)
-            .args(["--watch", "echo", "changed"])
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|err| format!("cannot start `{PASTE} --watch`: {err}"))?;
-        let stdout = child
-            .stdout
-            .take()
-            .ok_or_else(|| "no output from wl-paste".to_string())?;
-        let task = tokio::spawn(async move {
-            let mut lines = BufReader::new(stdout).lines();
-            while let Ok(Some(_)) = lines.next_line().await
-                && events.send(Event::ClipboardChanged).await.is_ok()
-            {}
-            // Dropping the child here ends the watch.
-            drop(child);
-        });
-        Ok(Watching::new(AbortOnDrop(task)))
+        watch(&[], events, || Event::ClipboardChanged, false)
     }
+
+    fn watch_selection(
+        &self,
+        events: mpsc::Sender<Event>,
+    ) -> std::result::Result<Watching, String> {
+        // The first run is the selection there already was, not a change.
+        watch(&["--primary"], events, || Event::SelectionChanged, true)
+    }
+}
+
+/// `wl-paste --watch` runs a command on every change (and once at start,
+/// for what is there); a line of output per change is all the daemon needs,
+/// it reads the content itself.
+fn watch(
+    args: &[&str],
+    events: mpsc::Sender<Event>,
+    event: fn() -> Event,
+    skip_first: bool,
+) -> std::result::Result<Watching, String> {
+    let mut child = tokio::process::Command::new(PASTE)
+        .args(args)
+        .args(["--watch", "echo", "changed"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|err| format!("cannot start `{PASTE} --watch`: {err}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "no output from wl-paste".to_string())?;
+    let task = tokio::spawn(async move {
+        let mut lines = BufReader::new(stdout).lines();
+        let mut skip = skip_first;
+        while let Ok(Some(_)) = lines.next_line().await {
+            if std::mem::take(&mut skip) {
+                continue;
+            }
+            if events.send(event()).await.is_err() {
+                break;
+            }
+        }
+        // Dropping the child here ends the watch.
+        drop(child);
+    });
+    Ok(Watching::new(AbortOnDrop(task)))
 }
 
 /// Stops the reader task, and with it `wl-paste`, when the watch is dropped.

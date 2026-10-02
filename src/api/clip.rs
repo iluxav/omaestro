@@ -8,11 +8,19 @@ use crate::backend::ClipContent;
 
 pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
     let clipboard = cx.backends.clipboard.clone();
+    let selection = cx.selection.clone();
     om.set(
         "selection",
         lua.create_async_function(move |_, ()| {
             let clipboard = clipboard.clone();
+            let selection = selection.clone();
             async move {
+                // An old selection reads as none: a rule that rewrites it
+                // would paste text the user is not looking at.
+                if let Some(reason) = selection.stale() {
+                    tracing::info!("selection: ignoring the primary selection, {reason}");
+                    return Ok(String::new());
+                }
                 let text = clipboard.selection().await.map_err(Error::external)?;
                 tracing::debug!("selection: {} bytes", text.len());
                 Ok(text)

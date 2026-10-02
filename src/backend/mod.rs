@@ -46,6 +46,16 @@ pub trait Notifier: Send + Sync {
         actions: &'a [(String, String)],
         timeout: Option<Duration>,
     ) -> BoxFuture<'a, Result<Option<String>>>;
+    /// A notification that stays up until closed (`om.busy`), replacing the
+    /// one with id `replaces` if given. Returns its id.
+    fn progress<'a>(
+        &'a self,
+        title: &'a str,
+        body: &'a str,
+        replaces: Option<u32>,
+    ) -> BoxFuture<'a, Result<u32>>;
+    /// Takes a notification down.
+    fn close(&self, id: u32) -> BoxFuture<'_, Result<()>>;
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -199,6 +209,12 @@ pub trait Clipboard: Send + Sync {
     /// Sends `Event::ClipboardChanged` on every change until the result is
     /// dropped.
     fn watch(
+        &self,
+        events: tokio::sync::mpsc::Sender<crate::runtime::Event>,
+    ) -> std::result::Result<Watching, String>;
+    /// Sends `Event::SelectionChanged` whenever the primary selection
+    /// changes, until the result is dropped.
+    fn watch_selection(
         &self,
         events: tokio::sync::mpsc::Sender<crate::runtime::Event>,
     ) -> std::result::Result<Watching, String>;

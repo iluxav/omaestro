@@ -55,24 +55,31 @@ pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
     )?;
 
     let injector = cx.backends.injector.clone();
+    let selection = cx.selection.clone();
     om.set(
         "type",
         lua.create_async_function(move |_, text: String| {
             let injector = injector.clone();
+            let selection = selection.clone();
             async move {
                 after_hotkey_release().await;
-                injector.type_text(&text).await.map_err(Error::external)
+                injector.type_text(&text).await.map_err(Error::external)?;
+                // Typed text goes over a selection, if there was one.
+                selection.replaced();
+                Ok(())
             }
         })?,
     )?;
 
     let backends = cx.backends.clone();
     let config = cx.config.clone();
+    let selection = cx.selection.clone();
     om.set(
         "paste",
         lua.create_async_function(move |_, text: String| {
             let backends = backends.clone();
             let config = config.clone();
+            let selection = selection.clone();
             async move {
                 // Which chord pastes depends on the app that has focus. If
                 // Hyprland cannot say, fall back to the default chord.
@@ -94,6 +101,11 @@ pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
                 sleep(SETTLE).await;
                 after_hotkey_release().await;
                 let pasted = backends.injector.key(&chord).await;
+                if pasted.is_ok() {
+                    // The paste went over the selection: it is not there to
+                    // read again.
+                    selection.replaced();
+                }
 
                 // Whatever happened to the paste, the user gets their
                 // clipboard back, after the app has had time to read ours.

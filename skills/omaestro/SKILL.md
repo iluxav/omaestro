@@ -72,6 +72,7 @@ om.llm(prompt, {system = "...", model = "..."})   -- Ollama/OpenAI-compatible, f
 om.shell("cmd", {stdin = text, timeout = 5})     -- stdout; raises on non-zero exit
 om.spawn("uwsm-app -- firefox")                  -- background, returns the pid
 om.notify(title, body, {actions = {yes = "Go"}, timeout = 30})   -- with actions: returns the key pressed
+om.busy("Rewriting…")  -- a notification while the handler works; gone when it ends (om.busy() sooner)
 om.prompt("label")  om.choose("label", {"a", "b"})               -- nil when cancelled
 om.http(url, {json = {...}, headers = {...}, method = "POST"})   -- {status, ok, body, json, headers}
 om.store.get(key, default)  om.store.set(key, value)             -- survives reloads and restarts
@@ -109,7 +110,11 @@ String helpers on every string: `:trim()`, `:split(sep)`, `:starts_with(p)`, `:e
   focus.
 - Use `om.paste` for text longer than a few ASCII characters or anything
   non-ASCII; `om.type` goes through a US keymap.
-- The primary selection can be stale (selected earlier in another window).
+- `om.selection()` returns "" for an old selection: made in a window that
+  no longer has focus, or already pasted/typed over by a rule. Check for ""
+  and tell the user to select something; never fall back to the clipboard.
+- Wrap slow work (a model call, a long command) in `om.busy("Doing X…")`
+  so the user sees it is working; it closes itself when the handler ends.
 - Handlers of one trigger run one at a time; a slow handler is logged, not
   killed. Keep handlers short; use `om.spawn` for long commands.
 - `om.llm` sends text to the configured endpoint only (Ollama on localhost

@@ -10,6 +10,8 @@ use crate::backend::{BackendError, BoxFuture, Notifier, Result};
 
 /// One call to `ask`: title, body, actions, timeout.
 pub type Asked = (String, String, Vec<(String, String)>, Option<Duration>);
+/// A `progress` notification: (id, title, body, the id it replaced).
+pub type Busy = (u32, String, String, Option<u32>);
 
 pub struct FakeNotifier {
     sent: Mutex<Vec<(String, String)>>,
@@ -20,6 +22,10 @@ pub struct FakeNotifier {
     failing: AtomicUsize,
     holding: AtomicUsize,
     permits: Semaphore,
+    /// `progress` notifications: (id, title, body, replaced id).
+    busy: Mutex<Vec<Busy>>,
+    closed: Mutex<Vec<u32>>,
+    next_id: AtomicUsize,
 }
 
 impl Default for FakeNotifier {
@@ -31,6 +37,9 @@ impl Default for FakeNotifier {
             failing: AtomicUsize::new(0),
             holding: AtomicUsize::new(0),
             permits: Semaphore::new(0),
+            busy: Mutex::default(),
+            closed: Mutex::default(),
+            next_id: AtomicUsize::new(1),
         }
     }
 }
@@ -47,6 +56,22 @@ impl FakeNotifier {
     /// What `ask` was called with so far.
     pub fn asked(&self) -> Vec<Asked> {
         self.asked
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The `progress` notifications shown: (id, title, body, replaced id).
+    pub fn busy(&self) -> Vec<Busy> {
+        self.busy
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The ids of the notifications taken down.
+    pub fn closed(&self) -> Vec<u32> {
+        self.closed
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
@@ -136,6 +161,35 @@ impl Notifier for FakeNotifier {
                 .pop_front()
                 .unwrap_or_default();
             Ok((!chosen.is_empty()).then_some(chosen))
+        })
+    }
+
+    fn progress<'a>(
+        &'a self,
+        title: &'a str,
+        body: &'a str,
+        replaces: Option<u32>,
+    ) -> BoxFuture<'a, Result<u32>> {
+        Box::pin(async move {
+            let id = match replaces {
+                Some(id) => id,
+                None => self.next_id.fetch_add(1, Ordering::SeqCst) as u32,
+            };
+            self.busy
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push((id, title.to_string(), body.to_string(), replaces));
+            Ok(id)
+        })
+    }
+
+    fn close(&self, id: u32) -> BoxFuture<'_, Result<()>> {
+        Box::pin(async move {
+            self.closed
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(id);
+            Ok(())
         })
     }
 }

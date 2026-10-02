@@ -357,9 +357,12 @@ for anything long or non-ASCII. `om.type` presses keys through a US keymap.
 Both are pressed by Hyprland itself, so every app takes them. Right after a
 hotkey, the first injection waits 400 ms for you to let go of the modifiers.
 
-**The selection can be stale.** Text selected earlier in another window is
-still the selection; a rule that replaces text acts on the window that has
-focus now.
+**An old selection reads as none.** Wayland keeps the last selection after
+you click away, so omaestro notes which window each selection was made in:
+`om.selection()` returns `""` when another window has focus now, or when a
+rule already pasted or typed over it and nothing was selected since. A rule
+that rewrites the selection then asks for one instead of pasting old text
+into the wrong place.
 
 **Typed triggers** read the keyboards through evdev, read-only, only while a
 rule has an `on_typed`, never logging more than the longest watched text.
@@ -405,7 +408,7 @@ om.on_typed(":sig", fn)                          -- the text is erased, then fn 
 om.trigger("name", fn)                           -- `om trigger name`
 
 -- Text, clipboard, keys
-om.selection()                                   -- the primary selection, "" if none
+om.selection()                                   -- the primary selection, "" if none or old
 om.clipboard() om.set_clipboard(text)
 om.paste(text)                                   -- at the cursor, replacing a selection
 om.type(text) om.key("ctrl+shift+t")
@@ -420,6 +423,7 @@ om.http(url, {method = "POST", json = {...}, headers = {...}, timeout = 10})
 -- Talking to you
 om.notify(title, body)
 om.notify(title, body, {actions = {yes = "Go", no = "Wait"}, timeout = 30})  -- returns the key pressed, or nil
+om.busy("Rewriting…", body)                      -- stays up until the handler ends; om.busy() ends it sooner
 om.prompt("label")                               -- a line from the menu, or nil
 om.choose("label", {"a", "b"})                   -- one option, or nil
 om.log(...)                                      -- the journal

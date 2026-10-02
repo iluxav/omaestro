@@ -84,6 +84,14 @@ impl Clipboard for FakeClipboard {
         self.journal.push("watch clipboard".to_string());
         Ok(Watching::new(()))
     }
+
+    fn watch_selection(
+        &self,
+        _: tokio::sync::mpsc::Sender<crate::runtime::Event>,
+    ) -> std::result::Result<Watching, String> {
+        // Tests send Event::SelectionChanged themselves.
+        Ok(Watching::new(()))
+    }
 }
 
 #[derive(Default)]

@@ -31,7 +31,8 @@ install:          ## om into ~/.cargo/bin and the systemd user unit, enabled
 	cargo install --path .
 	install -Dm644 systemd/omaestro.service $(HOME)/.config/systemd/user/omaestro.service
 	systemctl --user daemon-reload
-	systemctl --user enable --now omaestro
+	systemctl --user enable omaestro
+	systemctl --user restart omaestro
 	@echo
 	@echo "omaestro is running. Plugins to start with:"
 	@echo "  om plugin available                              what there is"

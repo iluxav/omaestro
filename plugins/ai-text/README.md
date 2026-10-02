@@ -71,3 +71,8 @@ om.use("ai-text").setup({
   chord; summarize and translate stay as they are.
 - The selection and the focused window are read before the menu opens, and
   that window gets the focus back before the paste.
+- While the model works, a notification says so ("Rewriting…", the mode's
+  name); it goes away when the answer is in.
+- A selection made in another window, or one already rewritten, counts as
+  none: the chord asks you to select some text instead of rewriting old
+  text.

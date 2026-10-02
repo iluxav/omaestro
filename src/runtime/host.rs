@@ -44,6 +44,7 @@ impl LuaHost {
     pub async fn load(
         rules: &Rules,
         backends: &Backends,
+        selection: &super::selection::Selection,
         triggers_changed: &Arc<Notify>,
         state_dir: &std::path::Path,
         config_dir: &std::path::Path,
@@ -58,6 +59,7 @@ impl LuaHost {
             triggers_changed: triggers_changed.clone(),
             state_dir: state_dir.to_path_buf(),
             config_dir: config_dir.to_path_buf(),
+            selection: selection.clone(),
         };
         api::install(&lua, &context)
             .map_err(|err| format!("setting up the Lua state: {}", describe(&err)))?;

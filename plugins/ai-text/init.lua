@@ -102,7 +102,10 @@ end
 function M.setup(opts)
   opts = opts or {}
   local model = opts.model
-  local function ask(text, system)
+  -- The model can take a while; a notification says it is working until
+  -- the answer is back (om.busy goes away when the handler ends).
+  local function ask(text, system, doing)
+    om.busy(doing or "Rewriting…", text:sub(1, 80))
     return om.llm(text, { system = system, model = model })
   end
 
@@ -116,8 +119,10 @@ function M.setup(opts)
     -- The instruction wrapped in M.frame; the answer replaces the text in
     -- the window it was selected in, or (show) comes up as a notification.
     local function apply(ctx, instruction, label, show)
-      local answer = ask(ctx.selection, table.concat({ M.frame[1], instruction, M.frame[2] }, " "))
+      local system = table.concat({ M.frame[1], instruction, M.frame[2] }, " ")
+      local answer = ask(ctx.selection, system, (label or "Custom instruction") .. "…")
       if show then
+        om.busy()
         om.notify(label, answer:trim())
         return
       end
@@ -178,18 +183,21 @@ function M.setup(opts)
     om.hotkey(summarize, function()
       local text = selection()
       if text then
-        om.notify("Summary", ask(text, M.prompts.summarize):trim())
+        local summary = ask(text, M.prompts.summarize, "Summarizing…"):trim()
+        om.busy()
+        om.notify("Summary", summary)
       end
     end)
   end
 
   local translate = option(opts.translate, "SUPER + ALT + T")
   if translate then
-    local system = string.format(M.prompts.translate, opts.language or "English")
+    local language = opts.language or "English"
+    local system = string.format(M.prompts.translate, language)
     om.hotkey(translate, function()
       local text = selection()
       if text then
-        om.paste(unquote(ask(text, system)))
+        om.paste(unquote(ask(text, system, "Translating to " .. language .. "…")))
       end
     end)
   end

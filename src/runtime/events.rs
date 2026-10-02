@@ -19,6 +19,8 @@ impl Runtime {
         if let Some(window) = &window {
             self.remember(window);
         }
+        self.selection
+            .focus(window.as_ref().map(|w| w.address.as_str()));
         let previous = std::mem::replace(&mut self.focused, window);
         if self.pending_reload.is_some() {
             return;

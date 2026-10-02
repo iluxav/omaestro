@@ -236,6 +236,9 @@ async fn the_ai_text_modes_menu_applies_the_picked_mode_and_remembers_it() {
     h.settle().await;
 
     assert!(h.errors().is_empty(), "{:?}", h.errors());
+    // The model call showed a busy notification, gone when the paste was done.
+    assert_eq!(h.fakes.notifier.busy()[0].1, "More polite…");
+    assert_eq!(h.fakes.notifier.closed(), [1]);
     let requests = h.fakes.llm.requests();
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].prompt, "send it now");
@@ -263,6 +266,14 @@ async fn the_ai_text_modes_menu_applies_the_picked_mode_and_remembers_it() {
         ]),
         "{journal:?}"
     );
+
+    // The rewrite went over the selection: pressing again without a new
+    // one asks for one instead of rewriting the old text a second time.
+    assert!(h.trigger("hotkey:SUPER+ALT+J").await.ok);
+    h.settle().await;
+    assert_eq!(h.errors(), ["Select some text first"]);
+    assert_eq!(h.fakes.llm.requests().len(), 1);
+    assert!(h.events.send(Event::SelectionChanged).await.is_ok());
 
     // The last mode used comes first; cancelling the menu asks nothing.
     h.fakes.journal.clear();
@@ -307,7 +318,7 @@ async fn the_ai_text_modes_menu_applies_the_picked_mode_and_remembers_it() {
             .unwrap_or_default()
             .contains("in French")
     );
-    assert!(h.errors().is_empty(), "{:?}", h.errors());
+    assert_eq!(h.errors(), ["Select some text first"]);
 }
 
 #[tokio::test]

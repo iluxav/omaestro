@@ -37,6 +37,8 @@ pub struct Context {
     pub state_dir: std::path::PathBuf,
     /// The rules directory; `lib/` under it is on `package.path`.
     pub config_dir: std::path::PathBuf,
+    /// Where the primary selection came from, kept by the runtime.
+    pub selection: crate::runtime::selection::Selection,
 }
 
 /// Creates the global `om` table and runs the prelude.

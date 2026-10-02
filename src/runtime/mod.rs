@@ -24,6 +24,7 @@ pub mod hotkeys;
 pub mod registry;
 pub mod render;
 mod requests;
+pub mod selection;
 mod settings;
 pub mod source;
 #[cfg(test)]
@@ -34,7 +35,7 @@ pub mod watch;
 mod watchers;
 
 use error::{describe, has_position};
-use handler::{HOTKEY_PRESSED, notify_error, run_handler};
+use handler::{BUSY, HOTKEY_PRESSED, notify_error, run_handler};
 use host::LuaHost;
 use hotkeys::{Hotkeys, Wanted};
 use registry::{Trigger, TriggerKind};
@@ -64,6 +65,8 @@ pub enum Event {
     ClipboardChanged,
     /// The clipboard's text, read after a change.
     ClipboardText(String),
+    /// The primary selection changed (always watched, see `selection`).
+    SelectionChanged,
     /// Something under a watched path changed.
     File(files::Change),
     /// Sleep, wake, USB, battery, network.
@@ -130,6 +133,10 @@ pub struct Runtime {
     settings: Settings,
     /// The window with keyboard focus, as of the last event.
     focused: Option<WinRef>,
+    /// Where the primary selection was made, shared with `om.selection`.
+    selection: selection::Selection,
+    /// The primary selection watch; `None` if it could not start.
+    selection_watch: Option<crate::backend::Watching>,
     /// What is known about open windows, so a close event can name its
     /// window. Filled from open, focus and title events.
     known: HashMap<String, WinRef>,
@@ -149,9 +156,19 @@ impl Runtime {
     ) -> Result<Self, String> {
         let triggers_changed = Arc::new(Notify::new());
         let (settings, settings_problem) = Settings::load(&info.state_dir);
+        let selection = selection::Selection::default();
+        let selection_watch = match backends.clipboard.watch_selection(events.clone()) {
+            Ok(watching) => Some(watching),
+            Err(err) => {
+                tracing::warn!("{err}; om.selection cannot tell a stale selection");
+                None
+            }
+        };
+        selection.set_watching(selection_watch.is_some());
         let host = LuaHost::load(
             &Rules::default(),
             &backends,
+            &selection,
             &triggers_changed,
             &info.state_dir,
             &info.config_dir,
@@ -181,6 +198,8 @@ impl Runtime {
             jobs: JoinSet::new(),
             pending_reload: None,
             focused: None,
+            selection,
+            selection_watch,
             known: HashMap::new(),
             started: Instant::now(),
             load_error: None,
@@ -218,6 +237,7 @@ impl Runtime {
                     Some(Event::TypedRescan) => self.sync_typed(true).await,
                     Some(Event::ClipboardChanged) => self.clipboard_changed(),
                     Some(Event::ClipboardText(text)) => self.clipboard_text(&text),
+                    Some(Event::SelectionChanged) => self.selection.changed(),
                     Some(Event::File(change)) => self.file_changed(change),
                     Some(Event::System(event)) => self.system_event(event),
                     Some(Event::Request(request, reply)) => self.handle(request, reply).await,
@@ -237,6 +257,7 @@ impl Runtime {
         self.files.clear();
         self.system_watches.clear();
         self.clip_watch = None;
+        self.selection_watch = None;
         self.typed_watch = None;
         self.jobs.shutdown().await;
         if exit == Exit::Shutdown && self.hotkeys.clear(self.backends.hypr.as_ref()).await {
@@ -355,25 +376,42 @@ impl Runtime {
             TriggerKind::Hotkey(_) | TriggerKind::AppHotkey { .. }
         )
         .then_some(started);
-        self.jobs.spawn(HOTKEY_PRESSED.scope(pressed, async move {
-            before.await;
-            match run_handler(&trigger, args).await {
-                Ok(()) => tracing::info!(
-                    "{}: done in {:.1}s",
-                    trigger.id,
-                    started.elapsed().as_secs_f64()
-                ),
-                Err(err) => {
-                    let mut message = describe(&err);
-                    // A tail call (`return om.llm(...)`) leaves no line behind;
-                    // point at where the handler was registered instead.
-                    if !has_position(&message) {
-                        message = format!("{}: {message}", trigger.origin);
-                    }
-                    notify_error(&backends, &message).await;
+        let busy = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let busy_slot = busy.clone();
+        self.jobs.spawn(HOTKEY_PRESSED.scope(
+            pressed,
+            BUSY.scope(busy_slot, async move {
+                before.await;
+                let outcome = run_handler(&trigger, args).await;
+                // An om.busy notification goes away with the run that showed it,
+                // before any error notification takes its place.
+                let shown = busy
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner)
+                    .take();
+                if let Some(id) = shown
+                    && let Err(err) = backends.notifier.close(id).await
+                {
+                    tracing::warn!("could not take the busy notification down: {err}");
                 }
-            }
-        }));
+                match outcome {
+                    Ok(()) => tracing::info!(
+                        "{}: done in {:.1}s",
+                        trigger.id,
+                        started.elapsed().as_secs_f64()
+                    ),
+                    Err(err) => {
+                        let mut message = describe(&err);
+                        // A tail call (`return om.llm(...)`) leaves no line behind;
+                        // point at where the handler was registered instead.
+                        if !has_position(&message) {
+                            message = format!("{}: {message}", trigger.origin);
+                        }
+                        notify_error(&backends, &message).await;
+                    }
+                }
+            }),
+        ));
     }
 
     /// Reloads now if nothing is running, otherwise as soon as the running
@@ -412,6 +450,7 @@ impl Runtime {
         let loading = LuaHost::load(
             &rules,
             &self.backends,
+            &self.selection,
             &self.triggers_changed,
             &self.info.state_dir,
             &self.info.config_dir,
