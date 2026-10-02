@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.iluxav.omaestro",
   "name": "omaestro",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "author": "iluxav",
   "license": "MIT",
   "description": "Hammerspoon for Hyprland: Lua rules for hotkeys, focus, timers, selection and a local model.",
