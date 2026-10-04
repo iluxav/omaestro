@@ -1,0 +1,29 @@
+{
+  "options": [
+    {
+      "key": "chord",
+      "type": "chord",
+      "label": "Close the window, with undo",
+      "default": "SUPER + W",
+      "description": "Omarchy's own Close window: add hl.unbind(\"SUPER + W\") to ~/.config/hypr/bindings.lua, or turn override on."
+    },
+    {
+      "key": "undo",
+      "type": "chord",
+      "label": "Bring back the window closed last",
+      "default": "SUPER + Z"
+    },
+    {
+      "key": "delay",
+      "type": "number",
+      "label": "Seconds before the window really closes",
+      "default": 3
+    },
+    {
+      "key": "notify",
+      "type": "bool",
+      "label": "A notification on each close",
+      "default": false
+    }
+  ]
+}

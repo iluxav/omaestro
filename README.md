@@ -127,6 +127,7 @@ om plugin add window-halves text-tools        # several at once: the starter set
 | `window-halves` | CTRL+ALT+Left/Right/Up/Down put the window on a half, the whole screen or the center; SUPER+ALT+C floats and centers it, or tiles it back |
 | `window-mode` | SUPER+ALT+W opens a window mode: h j k l halves, H L thirds, c center, m max, f float, Esc |
 | `window-rules` | floats and centers Calculator when it opens; your own rules by class or title; a note when a monitor comes or goes |
+| `tile-close-undo` | SUPER+W hides the window and closes it 3 s later; SUPER+Z in between brings it back as it was (takes Omarchy's SUPER+W, see its README) |
 | `apps` | SUPER+ALT+B brings Firefox to the front or starts it; SUPER+ALT+L arranges browser, editor and terminal; hotkeys scoped to one app |
 | `text-tools` | SUPER+ALT+D types today's date; SUPER+ALT+U upper-cases the selection; your own snippets |
 | `clipboard` | keeps the last ten clips, SUPER+ALT+V picks one to paste; SUPER+ALT+N appends the clipboard to `~/notes/clips.md` |
@@ -157,8 +158,9 @@ local window_halves = om.use("window-halves")
 window_halves.setup({ chord = "SUPER + CTRL + " })
 ```
 
-The chords stay clear of Omarchy's own. If one clashes with your config, the
-rule is refused and says so, and every chord is an option.
+The chords stay clear of Omarchy's own, except `tile-close-undo`'s SUPER+W,
+which replaces Omarchy's close on purpose. If one clashes with your config,
+the rule is refused and says so, and every chord is an option.
 
 ## Write your own rules
 

@@ -132,6 +132,22 @@ impl FakeHypr {
         self.state().clients.push(window);
     }
 
+    /// The window is gone, as if its app closed it.
+    pub fn remove_client(&self, address: &str) {
+        self.state().clients.retain(|c| c.address != address);
+    }
+
+    /// The window is now on `workspace`. Dispatches are only recorded, so a
+    /// test says where a move left a window.
+    pub fn move_client(&self, address: &str, workspace: &str, workspace_id: i64) {
+        for client in &mut self.state().clients {
+            if client.address == address {
+                client.workspace = workspace.to_string();
+                client.workspace_id = workspace_id;
+            }
+        }
+    }
+
     pub fn add_monitor(&self, monitor: Monitor) {
         self.state().monitors.push(monitor);
     }

@@ -132,8 +132,8 @@ halves.setup({ chord = "CTRL + ALT + " })
 
 ```sh
 om plugin available            # omaestro's own (plugins/ in its repo): ai-text, window-halves, window-mode,
-                               # window-rules, apps, text-tools, clipboard, reminders, web-search,
-                               # system-events, downloads, panel
+                               # window-rules, tile-close-undo, apps, text-tools, clipboard, reminders,
+                               # web-search, system-events, downloads, panel
 om plugin add window-halves    # fetched from GitHub into lib/, plus rules.d/window-halves.lua (options go there)
 om plugin add you/repo         # any repository whose root is a plugin; you/repo/dir for one inside it;
                                # a GitHub browser URL, any git URL (--path, --ref), or ./a-directory

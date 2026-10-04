@@ -37,6 +37,7 @@ mod shell;
 mod shipped;
 mod store;
 mod system;
+mod tile_close_undo;
 mod timers;
 mod typed;
 mod watchers;

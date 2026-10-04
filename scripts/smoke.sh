@@ -549,6 +549,39 @@ on_workspace_5() { in_nested hyprctl -j clients | grep -q '"name": "5"'; }
 wait_for "and the window is on workspace 5" on_workspace_5
 kill "$scratch_pid" 2>/dev/null; scratch_pid=""
 
+echo "# tile-close-undo (the plugin), in a scratch window"
+mkdir -p "$CFG/lib"
+cp -r plugins/tile-close-undo "$CFG/lib/tile-close-undo"
+printf 'om.use("tile-close-undo").setup({})\n' >"$CFG/init.lua"
+has_tile_close_undo() { nested_binds | grep -qF "omaestro: lib/tile-close-undo/init.lua"; }
+wait_for "the plugin loads and binds its chords" has_tile_close_undo
+scratch "$TERMINAL" "$CLASS_FLAG" smoke-undo sh -c "sleep 60"
+undo_focused() { in_nested hyprctl -j activewindow | grep -q '"class": "smoke-undo"'; }
+wait_for "a scratch window has focus" undo_focused
+# The workspace name of the scratch window, empty once it is gone.
+undo_workspace() {
+  in_nested hyprctl -j clients | python3 -c 'import json, sys
+for c in json.load(sys.stdin):
+    if c["class"] == "smoke-undo": print(c["workspace"]["name"])'
+}
+undo_home="$(undo_workspace)"
+undo_waiting() { [[ "$(undo_workspace)" == "special:om-tile-close-undo" ]]; }
+undo_back() { [[ "$(undo_workspace)" == "$undo_home" ]] && undo_focused; }
+undo_gone() { [[ -z "$(undo_workspace)" ]]; }
+check "SUPER+W (om trigger)" "$OM" trigger "hotkey:SUPER+W"
+wait_for "the window waits on the hidden workspace" undo_waiting
+check "SUPER+Z within the delay" "$OM" trigger "hotkey:SUPER+Z"
+wait_for "brings it back to $undo_home, focused" undo_back
+sleep 4
+check "and it did not close" undo_back
+check "SUPER+W again" "$OM" trigger "hotkey:SUPER+W"
+sleep 1
+check "a second later it still waits" undo_waiting
+wait_for "after the delay it is closed" undo_gone
+scratch_pid=""
+: >"$CFG/init.lua"
+rm -rf "$CFG/lib/tile-close-undo"
+
 echo "# open, title, close, workspace events"
 cat >"$CFG/init.lua" <<'RULES'
 om.hotkey("SUPER + ALT + J", function() end)
