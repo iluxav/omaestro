@@ -31,6 +31,7 @@ mod loading;
 mod menu;
 mod misc;
 mod modes;
+mod night_light;
 mod overrides;
 mod selection;
 mod shell;

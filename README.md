@@ -134,6 +134,7 @@ om plugin add window-halves text-tools        # several at once: the starter set
 | `reminders` | SUPER+ALT+R asks for minutes and reminds you then; a stretch reminder every 45 minutes; a daily 17:30 note |
 | `web-search` | SUPER+ALT+I asks for a query and opens it in the browser |
 | `system-events` | notifications on wake, USB devices and a low battery; network changes in the journal |
+| `night-light` | makes the screen warmer at 20:00 and normal again at 07:00 through hyprsunset; SUPER+ALT+S switches now; true colors while GIMP, Inkscape or darktable has focus |
 | `downloads` | a notification when something lands in `~/Downloads` |
 | `panel` | SUPER+ALT+O opens the rules panel; only for configs from before `init.lua` had that line |
 

@@ -1,0 +1,37 @@
+{
+  "options": [
+    {
+      "key": "warm_at",
+      "type": "time",
+      "label": "Make the screen warmer at",
+      "default": "20:00",
+      "optional": true
+    },
+    {
+      "key": "normal_at",
+      "type": "time",
+      "label": "Normal colors again at",
+      "default": "07:00",
+      "optional": true
+    },
+    {
+      "key": "temperature",
+      "type": "number",
+      "label": "Kelvin at night (6000 is hyprsunset's day)",
+      "default": 4000
+    },
+    {
+      "key": "toggle",
+      "type": "chord",
+      "label": "Warm or normal now, until the next switch",
+      "default": "SUPER + ALT + S",
+      "optional": true
+    },
+    {
+      "key": "notify",
+      "type": "bool",
+      "label": "A notification on each scheduled switch",
+      "default": false
+    }
+  ]
+}
