@@ -19,6 +19,9 @@ pub enum TriggerKind {
     /// `om.app_hotkey(matcher, chord, fn)`: the same, bound only while a
     /// window matching `matcher` has focus.
     AppHotkey { chord: Chord, matcher: Matcher },
+    /// `om.tap(key, fn)`: a modifier key alone (`Super_L`), let go within
+    /// `within` (`runtime/taps.rs`).
+    Tap { chord: Chord, within: Duration },
     /// `om.on_focus(matcher, fn)`: a matching window got focus.
     Focus(Matcher),
     /// `om.on_blur(matcher, fn)`: a matching window lost focus.
@@ -69,6 +72,7 @@ impl TriggerKind {
             TriggerKind::Named => "trigger",
             TriggerKind::Hotkey(_) => "hotkey",
             TriggerKind::AppHotkey { .. } => "app_hotkey",
+            TriggerKind::Tap { .. } => "tap",
             TriggerKind::Focus(_) => "on_focus",
             TriggerKind::Blur(_) => "on_blur",
             TriggerKind::Open(_) => "on_open",
@@ -99,6 +103,7 @@ impl TriggerKind {
             | TriggerKind::Clipboard
             | TriggerKind::System(_) => String::new(),
             TriggerKind::Hotkey(chord)
+            | TriggerKind::Tap { chord, .. }
             | TriggerKind::Mode { chord, .. }
             | TriggerKind::ModeKey { chord, .. }
             | TriggerKind::ModeExit { chord, .. } => chord.to_string(),
@@ -314,12 +319,23 @@ impl Registry {
         self.triggers.remove(id);
     }
 
-    /// Where a global chord is already used by a hotkey or a mode, if it is.
+    /// Where a global chord is already used by a hotkey, a mode or a tap,
+    /// if it is.
     pub fn chord_taken(&self, chord: &Chord) -> Option<String> {
         self.triggers.values().find_map(|t| match &t.kind {
             TriggerKind::Hotkey(c) | TriggerKind::Mode { chord: c, .. } if c.same_keys(chord) => {
                 Some(t.origin.clone())
             }
+            TriggerKind::Tap { chord: c, .. } if c.same_keys(chord) => Some(t.origin.clone()),
+            _ => None,
+        })
+    }
+
+    /// Where a tap already holds the key, if one does: its two binds and a
+    /// hotkey's on one chord would replace each other.
+    pub fn tap_taken(&self, chord: &Chord) -> Option<String> {
+        self.triggers.values().find_map(|t| match &t.kind {
+            TriggerKind::Tap { chord: c, .. } if c.same_keys(chord) => Some(t.origin.clone()),
             _ => None,
         })
     }

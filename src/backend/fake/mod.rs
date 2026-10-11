@@ -7,12 +7,14 @@ use super::Backends;
 mod hypr;
 mod io;
 mod notifier;
+mod ui;
 
 pub use hypr::FakeHypr;
 pub use io::{
     FakeClipboard, FakeHttp, FakeInjector, FakeKeyboards, FakeLlm, FakeShell, FakeSystem,
 };
 pub use notifier::FakeNotifier;
+pub use ui::FakeUi;
 
 /// What the rules made the backends do, in order. Shared by the fakes of
 /// one test so a sequence across backends can be asserted.
@@ -50,6 +52,7 @@ pub struct Fakes {
     pub llm: Arc<FakeLlm>,
     pub shell: Arc<FakeShell>,
     pub http: Arc<FakeHttp>,
+    pub ui: Arc<FakeUi>,
     /// Hyprland, clipboard, injection and shell calls, in the order they happened.
     pub journal: Journal,
 }
@@ -63,6 +66,7 @@ pub fn backends() -> (Backends, Fakes) {
     let llm = Arc::new(FakeLlm::default());
     let shell = Arc::new(FakeShell::new(journal.clone()));
     let http = Arc::new(FakeHttp::default());
+    let ui = Arc::new(FakeUi::default());
     let backends = Backends {
         notifier: notifier.clone(),
         hypr: hypr.clone(),
@@ -73,6 +77,7 @@ pub fn backends() -> (Backends, Fakes) {
         http: http.clone(),
         keyboards: Arc::new(FakeKeyboards::new(journal.clone())),
         system: Arc::new(FakeSystem::new(journal.clone())),
+        ui: ui.clone(),
     };
     (
         backends,
@@ -83,6 +88,7 @@ pub fn backends() -> (Backends, Fakes) {
             llm,
             shell,
             http,
+            ui,
             journal,
         },
     )

@@ -352,3 +352,39 @@ async fn clear_removes_only_our_binds() {
     hotkeys.clear(&hypr).await;
     assert!(hypr.calls().is_empty());
 }
+
+#[tokio::test]
+async fn a_tap_is_two_binds_on_its_key_and_goes_in_one_unbind() {
+    let hypr = FakeHypr::default();
+    let mut hotkeys = hotkeys();
+    let tap = Wanted {
+        id: "tap:Super_L".into(),
+        chord: Chord::parse("Super_L").unwrap(),
+        origin: "init.lua:1".into(),
+        submap: String::new(),
+        action: Action::Tap,
+    };
+    assert_eq!(
+        hotkeys.sync(&hypr, std::slice::from_ref(&tap)).await,
+        Report::default()
+    );
+    assert_eq!(
+        hypr.calls(),
+        [
+            "binds",
+            "bind Super_L -> '/usr/bin/om' trigger 'tap:Super_L/down' [omaestro: init.lua:1] (non_consuming, ignore_mods)",
+            "bind Super_L -> '/usr/bin/om' trigger 'tap:Super_L' [omaestro: init.lua:1] (release, non_consuming, ignore_mods)",
+        ]
+    );
+    // Both are ours: the next sync leaves them alone.
+    hypr.forget_calls();
+    assert_eq!(
+        hotkeys.sync(&hypr, std::slice::from_ref(&tap)).await,
+        Report::default()
+    );
+    assert_eq!(hypr.calls(), ["binds"]);
+    hypr.forget_calls();
+    assert_eq!(hotkeys.sync(&hypr, &[]).await, Report::default());
+    assert_eq!(hypr.calls(), ["binds", "unbind Super_L"]);
+    assert!(hypr.chords().is_empty());
+}

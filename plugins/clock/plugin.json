@@ -1,0 +1,77 @@
+{
+  "options": [
+    {
+      "key": "tap",
+      "type": "enum",
+      "options": ["SUPER", "SUPER_R", "ALT", "CTRL", "SHIFT", "off"],
+      "label": "Show it when this key is tapped on its own",
+      "default": "SUPER"
+    },
+    {
+      "key": "within",
+      "type": "number",
+      "label": "Seconds the key may be down for a tap",
+      "default": 0.3
+    },
+    {
+      "key": "chord",
+      "type": "chord",
+      "label": "Show it on this chord too",
+      "default": "SUPER + ALT + A",
+      "optional": true
+    },
+    {
+      "key": "seconds",
+      "type": "number",
+      "label": "Seconds the card stays up",
+      "default": 1
+    },
+    {
+      "key": "time",
+      "type": "string",
+      "label": "Time, as os.date writes it (%I:%M %p for 12-hour)",
+      "default": "%H:%M"
+    },
+    {
+      "key": "date",
+      "type": "string",
+      "label": "Date, as os.date writes it",
+      "default": "%A, %B %e"
+    },
+    {
+      "key": "weather",
+      "type": "bool",
+      "label": "The weather under the date, from wttr.in",
+      "default": true
+    },
+    {
+      "key": "location",
+      "type": "string",
+      "label": "Where: a city or lat,lon (unset: wttr.in goes by your IP)",
+      "optional": true,
+      "when": "weather"
+    },
+    {
+      "key": "units",
+      "type": "enum",
+      "options": ["auto", "metric", "imperial"],
+      "label": "Units (auto: what wttr.in uses for the place)",
+      "default": "auto",
+      "when": "weather"
+    },
+    {
+      "key": "refresh",
+      "type": "interval",
+      "label": "Fetch the weather every",
+      "default": "15m",
+      "when": "weather"
+    },
+    {
+      "key": "position",
+      "type": "enum",
+      "options": ["center", "top", "bottom"],
+      "label": "Where on the screen",
+      "default": "center"
+    }
+  ]
+}

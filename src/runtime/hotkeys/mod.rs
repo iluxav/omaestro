@@ -20,7 +20,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use crate::backend::shell::quote as shell_quote;
-use crate::backend::{BindAction, BindInfo, Hotkey, Hypr};
+use crate::backend::{BindAction, BindFlags, BindInfo, Hotkey, Hypr};
 use crate::chord::Chord;
 
 /// Our binds carry this at the start of their description. It is how we
@@ -35,6 +35,10 @@ pub enum Action {
     Trigger,
     /// Enter a submap (`"reset"` leaves it).
     Submap(String),
+    /// A tap of a modifier key: two binds on it, the press running
+    /// `om trigger <id>/down` and the release `om trigger <id>`
+    /// (`runtime/taps.rs`).
+    Tap,
 }
 
 /// A bind the rules want.
@@ -214,30 +218,19 @@ impl Hotkeys {
             if present && foreign.is_none() && self.applied.contains_key(&hotkey.id) {
                 continue;
             }
-            let bind = Hotkey {
-                chord: hotkey.chord.clone(),
-                action: match &hotkey.action {
-                    Action::Trigger => BindAction::Exec(format!(
-                        "{} {}",
-                        self.trigger_command,
-                        shell_quote(&hotkey.id)
-                    )),
-                    Action::Submap(name) => BindAction::Submap(name.clone()),
-                },
-                description: format!("{OWN_PREFIX}{}", hotkey.origin),
-                submap: hotkey.submap.clone(),
-            };
             // What is on the chord goes: a bind of ours that this process did
             // not make is a leftover of an earlier daemon (its command may
             // point somewhere else), and anything else is being overridden.
-            let result = match present {
+            let mut result = match present {
                 true => hypr.unbind(&hotkey.chord, &hotkey.submap).await,
                 false => Ok(()),
             };
-            let result = match result {
-                Ok(()) => hypr.bind(&bind).await,
-                Err(err) => Err(err),
-            };
+            for bind in self.binds_for(hotkey) {
+                if result.is_err() {
+                    break;
+                }
+                result = hypr.bind(&bind).await;
+            }
             match result {
                 Ok(()) => {
                     self.applied.insert(
@@ -279,6 +272,46 @@ impl Hotkeys {
             }
         }
         report
+    }
+
+    /// The binds a wanted hotkey takes: one, or two for a tap.
+    fn binds_for(&self, hotkey: &Wanted) -> Vec<Hotkey> {
+        let trigger =
+            |id: &str| BindAction::Exec(format!("{} {}", self.trigger_command, shell_quote(id)));
+        let bind = |action, flags| Hotkey {
+            chord: hotkey.chord.clone(),
+            action,
+            description: format!("{OWN_PREFIX}{}", hotkey.origin),
+            submap: hotkey.submap.clone(),
+            flags,
+        };
+        match &hotkey.action {
+            Action::Trigger => vec![bind(trigger(&hotkey.id), BindFlags::default())],
+            Action::Submap(name) => {
+                vec![bind(BindAction::Submap(name.clone()), BindFlags::default())]
+            }
+            Action::Tap => {
+                // Both pass the key on, so windows see it as before. Any
+                // modifiers: Hyprland reports a modifier's own press without
+                // it, and its release with it already gone.
+                let press = BindFlags {
+                    non_consuming: true,
+                    ignore_mods: true,
+                    ..BindFlags::default()
+                };
+                let down = format!("{}{}", hotkey.id, super::taps::DOWN);
+                vec![
+                    bind(trigger(&down), press),
+                    bind(
+                        trigger(&hotkey.id),
+                        BindFlags {
+                            release: true,
+                            ..press
+                        },
+                    ),
+                ]
+            }
+        }
     }
 
     /// Notes a hotkey without a bind; reported when the reason is new.

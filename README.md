@@ -37,7 +37,8 @@ The project is `omaestro`; the command and the Lua table are both `om`.
 - **Hotkeys** in Hyprland's own syntax, registered live, never written to
   your Hyprland config. **App hotkeys** that exist only while one app has
   focus, so every other app keeps the chord. **Modes**: one chord, then
-  single keys until Escape.
+  single keys until Escape. **Taps**: SUPER (or ALT, CTRL, SHIFT) pressed
+  and let go on its own, while it keeps working in every chord.
 - **Windows**: react when a window opens, gets focus or changes title;
   float it, center it, send it to a workspace, place it on a half or a third
   of the screen, arrange a whole desk in one call.
@@ -48,6 +49,9 @@ The project is `omaestro`; the command and the Lua table are both `om`.
 - **The machine**: sleep and wake, USB devices, the battery, the network,
   files landing in a directory.
 - **Typed text**: `:sig` typed anywhere becomes your signature.
+- **Cards on the screen**: `om.show` puts large text in the middle of the
+  screen for a moment (the time, a result, a countdown), over every window
+  and never in the way of a click.
 - Shell commands, HTTP, notifications with buttons, a prompt and a chooser,
   persistent state. Errors show up as notifications with the file and line;
   the daemon never dies because of a rule.
@@ -136,6 +140,7 @@ om plugin add window-halves text-tools        # several at once: the starter set
 | `system-events` | notifications on wake, USB devices and a low battery; network changes in the journal |
 | `night-light` | makes the screen warmer at 20:00 and normal again at 07:00 through hyprsunset; SUPER+ALT+S switches now; true colors while GIMP, Inkscape or darktable has focus |
 | `downloads` | a notification when something lands in `~/Downloads` |
+| `clock` | a tap of SUPER (or SUPER+ALT+A) shows the time, the date and the weather in large type in the middle of the screen for a second |
 | `panel` | SUPER+ALT+O opens the rules panel; only for configs from before `init.lua` had that line |
 
 `om plugin add` installs a plugin with its defaults and shows them in a
@@ -408,6 +413,21 @@ rule already pasted or typed over it and nothing was selected since. A rule
 that rewrites the selection then asks for one instead of pasting old text
 into the wrong place.
 
+**Taps** (`om.tap`) leave the key alone: SUPER still reaches your apps
+and still makes every chord. Hyprland tells omaestro when the key goes
+down and when it comes up; the rule runs when it came up within `within`
+(0.3 s by default) and no chord was made in between. A chord with a key
+Hyprland has no bind for (SUPER+a letter an app uses, or SUPER and a mouse
+click) does not cancel the tap, so keep `within` short.
+
+**Cards** (`om.show`) are drawn by quickshell, never by the daemon. With
+omaestro installed as an Omarchy plugin, the Omarchy shell draws them in
+your theme. Anywhere else (plain Hyprland, or the systemd setup) omaestro
+starts a quickshell of its own for the first card, in the Omarchy theme's
+colors when there is one, and stops it when the daemon stops; install the
+`quickshell` package for that. With no quickshell at all, a card is sent
+as a notification.
+
 **Typed triggers** read the keyboards through evdev, read-only, only while a
 rule has an `on_typed`, never logging more than the longest watched text.
 They need your user in the `input` group (`sudo usermod -aG input $USER`,
@@ -431,6 +451,8 @@ what sets the rule off).
 om.hotkey("SUPER + ALT + J", fn)                 -- a chord ("SUPER ALT, J" works too)
 om.hotkey("SUPER + ALT + J", fn, {label = "Rewrite the selection"})  -- named, for the panel
 om.app_hotkey("^firefox$", "CTRL + S", fn)       -- only while a matching window has focus; or {class=, title=}
+om.tap("SUPER", fn, {within = 0.3})              -- SUPER let go on its own within 0.3 s; also ALT, CTRL, SHIFT
+                                                 -- (left keys) and SUPER_R, ALT_R, CTRL_R, SHIFT_R
 om.on_focus({class = "^firefox$"}, fn)           -- fn(win); matchers are Lua patterns, both must match
 om.on_blur(matcher, fn) om.on_open(matcher, fn) om.on_close(matcher, fn) om.on_title(matcher, fn)
 om.on_workspace(fn)                              -- fn({id, name})
@@ -472,6 +494,11 @@ om.http(url, {method = "POST", json = {...}, headers = {...}, timeout = 10})
 om.notify(title, body)
 om.notify(title, body, {actions = {yes = "Go", no = "Wait"}, timeout = 30})  -- returns the key pressed, or nil
 om.busy("Rewriting…", body)                      -- stays up until the handler ends; om.busy() ends it sooner
+om.show({big = "14:32", lines = {"Saturday", "18 °C"}}, {seconds = 1})  -- a card in the middle of the screen
+om.show("Saved")                                 -- a large line alone; seconds default 2, 0 = until closed;
+                                                 -- position "center", "top" or "bottom"
+local c = om.show("3", {seconds = 0}) c:update("2") c:close()          -- new text while it is up (false once
+                                                 -- it is gone), take it down
 om.prompt("label")                               -- a line from the menu, or nil
 om.choose("label", {"a", "b"})                   -- one option, or nil
 om.log(...)                                      -- the journal

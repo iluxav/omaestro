@@ -27,6 +27,7 @@ mod requests;
 pub mod selection;
 mod settings;
 pub mod source;
+mod taps;
 #[cfg(test)]
 mod tests;
 pub mod timers;
@@ -142,6 +143,8 @@ pub struct Runtime {
     known: HashMap<String, WinRef>,
     started: Instant,
     load_error: Option<String>,
+    /// When each tap's key went down.
+    taps: taps::Taps,
 }
 
 impl Runtime {
@@ -202,6 +205,7 @@ impl Runtime {
             selection_watch,
             known: HashMap::new(),
             started: Instant::now(),
+            taps: taps::Taps::default(),
             load_error: None,
         };
         if let Some(message) = settings_problem {
@@ -330,7 +334,15 @@ impl Runtime {
 
     /// Starts the handler of trigger `id` as a job. Errors it raises are
     /// reported by the job; the caller only learns whether it was started.
-    fn fire(&mut self, id: &str) -> Result<(), String> {
+    /// Runs a trigger's handler; the answer is what `om trigger` prints.
+    fn fire(&mut self, id: &str) -> Result<String, String> {
+        // A tap's key went down: noted, nothing runs yet.
+        if let Some(tap) = id.strip_suffix(taps::DOWN)
+            && tap.starts_with("tap:")
+        {
+            self.taps.press(tap);
+            return Ok(format!("noted the press of {tap}"));
+        }
         if self.pending_reload.is_some() {
             return Err(format!(
                 "a reload is waiting for running handlers, '{id}' was not fired"
@@ -345,6 +357,16 @@ impl Runtime {
             }
             None => return Err(format!("no trigger named '{id}'")),
         };
+        if let TriggerKind::Tap { within, .. } = &trigger.kind {
+            match self.taps.release(id) {
+                Some(held) if held <= *within => {}
+                Some(held) => {
+                    tracing::debug!("{id}: held {} ms, not a tap", held.as_millis());
+                    return Ok(format!("{id}: held {} ms, not a tap", held.as_millis()));
+                }
+                None => return Ok(format!("{id}: no press seen, not a tap")),
+            }
+        }
         if let TriggerKind::ModeKey { once: true, .. } = &trigger.kind {
             let hypr = self.backends.hypr.clone();
             self.jobs.spawn(async move {
@@ -354,7 +376,7 @@ impl Runtime {
             });
         }
         self.spawn_handler(trigger, MultiValue::new());
-        Ok(())
+        Ok(format!("fired {id}"))
     }
 
     fn spawn_handler(&mut self, trigger: Trigger, args: MultiValue) {

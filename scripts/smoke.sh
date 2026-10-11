@@ -17,8 +17,8 @@
 # M1: hotkeys (bind, conflict, press, Hyprland reload, rule reload, exit),
 #     selection, paste with clipboard restore, the model.
 # Later: windows, events, apps, modes, timers, watchers, enable/disable, and
-#     the plugin's panel loaded in quickshell (SMOKE_SHOTS=<dir> also saves
-#     screenshots of it there).
+#     the plugin's panel loaded in quickshell, om.show's cards (SMOKE_SHOTS=<dir>
+#     also saves screenshots of both there).
 
 set -u
 
@@ -388,6 +388,9 @@ ShellRoot {
       source: "file://$PWD/Widget.qml"
     }
   }
+  // om.show's cards as the Omarchy shell hosts them (Service.qml does the
+  // same), in its theme.
+  Loader { source: "file://$PWD/ui/OmarchyCards.qml" }
   IpcHandler {
     target: "smoke"
     function rules(): string {
@@ -489,6 +492,16 @@ override is on: rules take chords Hyprland already has|true"
       labels_are "omaestro:omaestro menu,web-search  (plugin):Search the web"
     check "and its files are gone" test ! -e "$CFG/lib/text-tools"
     rm -rf "$CFG/lib" "$CFG/rules.d/web-search.lua"
+
+    cards_in_shell() { in_nested qs ipc -p "$TMP/qs" call -- omaestro.ui "$@" 2>/dev/null; }
+    expect "the cards load inside the shell, in its theme" "ok" cards_in_shell ping
+    expect "and show a card" "ok" cards_in_shell show \
+      '{"id":1,"big":"14:32","lines":["Saturday, October 11","Clear, 18 °C"],"ms":0,"position":"center"}'
+    if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+      sleep 0.5
+      in_nested grim "$SMOKE_SHOTS/card-in-shell.png" && echo "      screenshot: $SMOKE_SHOTS/card-in-shell.png"
+    fi
+    cards_in_shell close 1 >/dev/null
   else
     fail "the panel did not load (quickshell log follows)"
     tail -n 30 "$TMP/qs.log"
@@ -498,6 +511,78 @@ override is on: rules take chords Hyprland already has|true"
   qs_pid=""
 else
   skip "the panel (needs quickshell and the Omarchy shell sources)"
+fi
+
+echo "# cards (om.show), in omaestro's own quickshell in the nested Hyprland"
+# No Omarchy shell runs on the nested display, so the daemon starts its own
+# quickshell, on $TMP/omaestro-ui (next to its socket).
+if command -v quickshell >/dev/null; then
+  cards_ipc() { in_nested quickshell ipc -p "$TMP/omaestro-ui" call -- omaestro.ui "$@" 2>/dev/null; }
+  card_open() { [[ "$(cards_ipc state)" == open* ]]; }
+  card_closed() { [[ "$(cards_ipc state)" == closed ]]; }
+  card_layer() { in_nested hyprctl -j layers | grep -qF '"namespace": "omaestro-card"'; }
+  no_card_layer() { ! card_layer; }
+  no_cards() { ! in_nested quickshell ipc -p "$TMP/omaestro-ui" call omaestro.ui ping >/dev/null 2>&1; }
+  check "om.show starts the cards and shows one" "$OM" eval \
+    "om.show({big = '14:32', lines = {'Saturday, October 11', 'Clear, 18 °C'}}, {seconds = 0})"
+  wait_for "the card is up" card_open
+  wait_for "as a layer surface over the windows" card_layer
+  if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+    sleep 0.5
+    in_nested grim "$SMOKE_SHOTS/card-own.png" && echo "      screenshot: $SMOKE_SHOTS/card-own.png"
+  fi
+  check "its handle closes it" "$OM" eval "om.show('x', {seconds = 0}):close()"
+  wait_for "and it goes" card_closed
+  wait_for "leaving no surface" no_card_layer
+  check "a card with seconds" "$OM" eval "om.show('brief', {seconds = 0.3})"
+  wait_for "goes by itself" card_closed
+  # The clock plugin end to end: its chord, om.show, this quickshell. No
+  # weather: the smoke test asks nothing of wttr.in.
+  mkdir -p "$CFG/lib"
+  cp -r plugins/clock "$CFG/lib/clock"
+  printf 'om.use("clock").setup({ weather = false })\n' >"$CFG/rules.d/clock.lua"
+  clock_bound() { nested_binds | grep -qF "omaestro: lib/clock/init.lua:"; }
+  wait_for "the clock plugin binds its chord" clock_bound
+  check "its chord fires" "$OM" trigger 'hotkey:SUPER+ALT+A'
+  wait_for "and its card is up" card_open
+  if [[ -n "${SMOKE_SHOTS:-}" ]] && command -v grim >/dev/null; then
+    sleep 0.3
+    in_nested grim "$SMOKE_SHOTS/clock.png" && echo "      screenshot: $SMOKE_SHOTS/clock.png"
+  fi
+  wait_for "for a second" card_closed
+  # Its SUPER tap: two binds on Super_L that pass the key on, one on release.
+  tap_binds() {
+    in_nested hyprctl -j binds | python3 -c 'import json, sys
+b = [x for x in json.load(sys.stdin) if x["key"] == "Super_L" and x["description"].startswith("omaestro: lib/clock/")]
+sys.exit(0 if sorted(x["release"] for x in b) == [False, True] and all(x["non_consuming"] for x in b) else 1)'
+  }
+  wait_for "its SUPER tap is two binds on Super_L that pass the key on" tap_binds
+  quick_tap() { "$OM" trigger tap:Super_L/down >/dev/null && [[ "$("$OM" trigger tap:Super_L)" == "fired tap:Super_L" ]]; }
+  check "a quick tap, as those binds report it, fires" quick_tap
+  wait_for "and shows the card" card_open
+  wait_for "for a second" card_closed
+  if [[ "$PRESS" == 1 ]]; then
+    taps() { grep -c "tap:Super_L: fired" "$LOG"; }
+    before=$(taps)
+    echo "      click into the nested Hyprland window and tap SUPER on its own (30 seconds)"
+    for _ in $(seq 300); do [[ "$(taps)" -gt "$before" ]] && break; sleep 0.1; done
+    if [[ "$(taps)" -gt "$before" ]]; then pass "tapping SUPER shows the clock"; else fail "tapping SUPER shows the clock"; fi
+    before=$(taps)
+    echo "      now press SUPER+Q (a chord), then hold SUPER for a second and let go (10 seconds)"
+    sleep 10
+    if [[ "$(taps)" == "$before" ]]; then pass "a chord or a long hold does not"; else fail "a chord or a long hold does not"; fi
+  else
+    skip "tapping SUPER by hand (run with --press to include it)"
+  fi
+  rm -rf "$CFG/lib" "$CFG/rules.d/clock.lua"
+  # A binding loop or a script error is a warning in quickshell's log, not a failure.
+  qml_clean() { ! grep -E "WARN|ERROR" "$TMP/omaestro-ui.log" | grep -qE "qml|Binding loop|Error:"; }
+  check "quickshell logs no QML problems" qml_clean
+  stop_daemon
+  wait_for "the cards stop with the daemon" no_cards
+  start_daemon
+else
+  skip "cards (needs quickshell)"
 fi
 
 echo "# focus, dispatch, type and key, in a scratch window"

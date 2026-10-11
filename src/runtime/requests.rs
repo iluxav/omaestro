@@ -15,7 +15,7 @@ impl Runtime {
             Request::Status => Response::data(&self.status()),
             Request::List => Response::data(&self.rows()),
             Request::Trigger { id } => match self.fire(&id) {
-                Ok(()) => Response::ok(format!("fired {id}")),
+                Ok(message) => Response::ok(message),
                 Err(message) => Response::err(message),
             },
             Request::Eval { chunk } => {
@@ -48,7 +48,7 @@ impl Runtime {
             row.overrides = self.hotkeys.displaced().get(&row.id).cloned();
             if matches!(
                 row.kind.as_str(),
-                "hotkey" | "app_hotkey" | "mode" | "mode_key" | "mode_exit"
+                "hotkey" | "app_hotkey" | "tap" | "mode" | "mode_key" | "mode_exit"
             ) {
                 row.bound = Some(self.hotkeys.is_applied(&row.id));
             }

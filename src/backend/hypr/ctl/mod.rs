@@ -205,12 +205,22 @@ fn bind_code(hotkey: &Hotkey) -> String {
         BindAction::Exec(command) => format!("hl.dsp.exec_cmd({})", lua_quote(command)),
         BindAction::Submap(name) => format!("hl.dsp.submap({})", lua_quote(name)),
     };
+    let flags = hotkey.flags;
+    let mut options = format!("description = {}", lua_quote(&hotkey.description));
+    for (on, name) in [
+        (flags.release, "release"),
+        (flags.non_consuming, "non_consuming"),
+        (flags.ignore_mods, "ignore_mods"),
+    ] {
+        if on {
+            options.push_str(&format!(", {name} = true"));
+        }
+    }
     in_submap(
         &hotkey.submap,
         format!(
-            "hl.bind({}, {dispatcher}, {{ description = {} }})",
-            lua_quote(&hotkey.chord.hyprland()),
-            lua_quote(&hotkey.description)
+            "hl.bind({}, {dispatcher}, {{ {options} }})",
+            lua_quote(&hotkey.chord.hyprland())
         ),
     )
 }

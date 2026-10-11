@@ -79,6 +79,7 @@ async fn all_builtin_plugins_load_together() {
             "on_sleep",
             "on_usb",
             "on_wake",
+            "tap",
         ]
     );
     // Nothing was refused: every hotkey has its bind.

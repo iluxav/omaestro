@@ -46,6 +46,17 @@ pub async fn run(socket: &Path, clear: bool) -> bool {
             ),
         }
     }
+    // The Omarchy shell is a quickshell too: wherever cards can be drawn,
+    // it is installed.
+    match find_on_path("quickshell") {
+        Some(found) => println!(
+            "ok    quickshell ({}) draws om.show's cards",
+            found.display()
+        ),
+        None => println!(
+            "warn  quickshell is not on PATH; om.show sends a notification instead of a card"
+        ),
+    }
 
     // The daemon, and which hotkeys it holds right now.
     let mut live = Vec::new();
@@ -88,13 +99,13 @@ pub async fn run(socket: &Path, clear: bool) -> bool {
     healthy
 }
 
-/// The chords of the daemon's hotkeys, from `om list`. A hotkey that is
-/// switched off or refused holds no bind, so it is not counted; an app
-/// hotkey's bind comes and goes with the focus, so it is.
+/// The chords of the daemon's hotkeys and taps, from `om list`. A hotkey
+/// that is switched off or refused holds no bind, so it is not counted; an
+/// app hotkey's bind comes and goes with the focus, so it is.
 fn hotkey_chords(rows: &[TriggerRow]) -> Vec<Chord> {
     rows.iter()
         .filter(|row| {
-            (row.kind == "hotkey" || row.kind == "app_hotkey")
+            matches!(row.kind.as_str(), "hotkey" | "app_hotkey" | "tap")
                 && row.enabled
                 && row.problem.is_none()
         })

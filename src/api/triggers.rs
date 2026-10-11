@@ -13,7 +13,7 @@ use crate::runtime::timers::{parse_clock, parse_interval};
 use crate::runtime::typed::check_text;
 
 /// How a trigger gets its id.
-enum Id {
+pub(super) enum Id {
     /// The rule named it (`om.trigger`), or its parameter is its name (a
     /// hotkey's chord, a typed text): a second one with the same id is a
     /// conflict the rule hears about.
@@ -59,6 +59,11 @@ pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
                 if let Some(taken) = registry.lock().app_chord_taken(&chord) {
                     return Err(Error::runtime(format!(
                         "om.hotkey: {chord} is an app hotkey at {taken}; a global hotkey cannot share its chord"
+                    )));
+                }
+                if let Some(taken) = registry.lock().tap_taken(&chord) {
+                    return Err(Error::runtime(format!(
+                        "om.hotkey: {chord} is tapped at {taken}; a hotkey cannot share its key"
                     )));
                 }
                 let mut label = label_from("hotkey", options)?;
@@ -280,7 +285,7 @@ pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
 
 /// Puts the trigger in the registry under the calling rule's position and
 /// hands the rule its handle.
-fn register(
+pub(super) fn register(
     lua: &Lua,
     registry: &SharedRegistry,
     triggers_changed: &Arc<Notify>,

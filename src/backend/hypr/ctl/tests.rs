@@ -1,6 +1,7 @@
 //! The Lua we send to Hyprland and how its answers are read.
 
 use super::*;
+use crate::backend::BindFlags;
 
 fn hotkey(chord: &str, command: &str, description: &str) -> Hotkey {
     Hotkey {
@@ -8,6 +9,7 @@ fn hotkey(chord: &str, command: &str, description: &str) -> Hotkey {
         action: BindAction::Exec(command.to_string()),
         description: description.to_string(),
         submap: String::new(),
+        flags: BindFlags::default(),
     }
 }
 
@@ -28,12 +30,31 @@ fn bind_and_unbind_are_plain_config_calls() {
 }
 
 #[test]
+fn flags_go_with_the_description() {
+    let mut release = hotkey(
+        "Super_L",
+        "om trigger 'tap:Super_L'",
+        "omaestro: init.lua:2",
+    );
+    release.flags = BindFlags {
+        release: true,
+        non_consuming: true,
+        ignore_mods: true,
+    };
+    assert_eq!(
+        bind_code(&release),
+        r#"hl.bind("Super_L", hl.dsp.exec_cmd("om trigger 'tap:Super_L'"), { description = "omaestro: init.lua:2", release = true, non_consuming = true, ignore_mods = true })"#
+    );
+}
+
+#[test]
 fn submap_binds_are_wrapped_in_define_submap() {
     let entry = Hotkey {
         chord: Chord::parse("SUPER + ALT + W").unwrap(),
         action: BindAction::Submap("om-super+alt+w".into()),
         description: "omaestro: init.lua:1".into(),
         submap: String::new(),
+        flags: BindFlags::default(),
     };
     assert_eq!(
         bind_code(&entry),
@@ -44,6 +65,7 @@ fn submap_binds_are_wrapped_in_define_submap() {
         action: BindAction::Exec("om trigger 'mode:SUPER+ALT+W/H'".into()),
         description: "omaestro: init.lua:1".into(),
         submap: "om-super+alt+w".into(),
+        flags: BindFlags::default(),
     };
     assert_eq!(
         bind_code(&key),

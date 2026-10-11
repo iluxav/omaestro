@@ -2,6 +2,7 @@
 // shell is up. It compiles nothing. `scripts/plugin-start.sh` fetches the
 // prebuilt release binary (SHA256 pinned in release.sha256) on first use,
 // then runs `om daemon`; the daemon reads ~/.config/omaestro like always.
+// It also hosts the cards of `om.show` (ui/OmarchyCards.qml).
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -52,6 +53,12 @@ Item {
     id: restart
     repeat: false
     onTriggered: if (!root.stopping) daemon.running = true
+  }
+
+  // The cards om.show puts on screen, drawn here in the shell's theme. In
+  // a Loader: if they cannot load, the daemon above runs all the same.
+  Loader {
+    source: "ui/OmarchyCards.qml"
   }
 
   Component.onDestruction: {

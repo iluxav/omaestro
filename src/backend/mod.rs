@@ -21,6 +21,9 @@ pub mod notify;
 pub mod run;
 pub mod shell;
 pub mod system;
+pub mod ui;
+
+pub use ui::{Card, Position, Ui};
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 pub type Result<T> = std::result::Result<T, BackendError>;
@@ -150,6 +153,18 @@ pub enum BindAction {
     Submap(String),
 }
 
+/// How Hyprland runs a bind, beyond its chord. All off: on the press, the
+/// key kept from the window, the modifiers exactly as in the chord.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BindFlags {
+    /// On the key's release instead of its press.
+    pub release: bool,
+    /// The key still reaches the focused window.
+    pub non_consuming: bool,
+    /// Whatever modifiers are held.
+    pub ignore_mods: bool,
+}
+
 /// A bind to register.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hotkey {
@@ -158,6 +173,7 @@ pub struct Hotkey {
     pub description: String,
     /// The submap it lives in; empty for the global keymap.
     pub submap: String,
+    pub flags: BindFlags,
 }
 
 pub trait Hypr: Send + Sync {
@@ -339,10 +355,13 @@ pub struct Backends {
     pub http: Arc<dyn Http>,
     pub keyboards: Arc<dyn Keyboards>,
     pub system: Arc<dyn System>,
+    pub ui: Arc<dyn Ui>,
 }
 
 impl Backends {
-    pub fn real() -> Result<Self> {
+    /// `ui_dir`: where omaestro's own quickshell instance, if it needs one,
+    /// gets its files.
+    pub fn real(ui_dir: std::path::PathBuf) -> Result<Self> {
         Ok(Self {
             notifier: Arc::new(notify::NotifySend),
             hypr: Arc::new(hypr::HyprCtl),
@@ -356,6 +375,7 @@ impl Backends {
             #[cfg(not(feature = "typed"))]
             keyboards: Arc::new(NoKeyboards),
             system: Arc::new(system::Tools),
+            ui: Arc::new(ui::Quickshell::new(ui_dir)),
         })
     }
 }

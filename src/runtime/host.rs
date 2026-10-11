@@ -138,6 +138,7 @@ impl LuaHost {
             .filter_map(|t| {
                 let (chord, submap, action) = match &t.kind {
                     TriggerKind::Hotkey(chord) => (chord, String::new(), Action::Trigger),
+                    TriggerKind::Tap { chord, .. } => (chord, String::new(), Action::Tap),
                     TriggerKind::Mode { chord, submap, .. } => {
                         (chord, String::new(), Action::Submap(submap.clone()))
                     }

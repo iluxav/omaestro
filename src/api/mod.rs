@@ -20,7 +20,9 @@ mod modes;
 mod notify;
 mod shell;
 mod store;
+mod tap;
 pub mod triggers;
+mod ui;
 pub mod window;
 
 const PRELUDE: &str = include_str!("../../lua/prelude.lua");
@@ -56,6 +58,8 @@ pub fn install(lua: &Lua, cx: &Context) -> Result<()> {
     shell::install(lua, &om, cx)?;
     store::install(lua, &om, cx)?;
     triggers::install(lua, &om, cx)?;
+    tap::install(lua, &om, cx)?;
+    ui::install(lua, &om, cx)?;
     modes::install(lua, &om, cx)?;
     om.set("config_dir", cx.config_dir.to_string_lossy().to_string())?;
     lua.globals().set("om", om)?;

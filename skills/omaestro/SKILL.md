@@ -47,6 +47,8 @@ Triggers return a handle with `:remove()`.
 om.hotkey("SUPER + ALT + J", fn)                 -- a chord; Hyprland runs the handler
 om.app_hotkey("^firefox$", "CTRL + S", fn)       -- bound only while a matching window has focus;
                                                  -- matcher: class pattern or {class=, title=}
+om.tap("SUPER", fn, {within = 0.3})              -- SUPER pressed and let go alone, quickly; ALT, CTRL,
+                                                 -- SHIFT, SUPER_R...; the key keeps working in chords
 om.on_focus({class = "^firefox$"}, fn)           -- fn(win); also on_blur, on_open, on_close, on_title
 om.on_workspace(fn)  om.on_monitor(fn)           -- fn({id, name}) / fn({name, change})
 om.on_clipboard(fn)                              -- fn(text); "" for images
@@ -73,6 +75,8 @@ om.shell("cmd", {stdin = text, timeout = 5})     -- stdout; raises on non-zero e
 om.spawn("uwsm-app -- firefox")                  -- background, returns the pid
 om.notify(title, body, {actions = {yes = "Go"}, timeout = 30})   -- with actions: returns the key pressed
 om.busy("Rewriting…")  -- a notification while the handler works; gone when it ends (om.busy() sooner)
+om.show({big = "14:32", lines = {"Saturday"}}, {seconds = 1, position = "center"})  -- a card over every window
+local c = om.show("3", {seconds = 0}) c:update("2") c:close()  -- seconds 0: up until closed; update is false once it is gone
 om.prompt("label")  om.choose("label", {"a", "b"})               -- nil when cancelled
 om.http(url, {json = {...}, headers = {...}, method = "POST"})   -- {status, ok, body, json, headers}
 om.store.get(key, default)  om.store.set(key, value)             -- survives reloads and restarts
@@ -133,7 +137,7 @@ halves.setup({ chord = "CTRL + ALT + " })
 ```sh
 om plugin available            # omaestro's own (plugins/ in its repo): ai-text, window-halves, window-mode,
                                # window-rules, tile-close-undo, apps, text-tools, clipboard, reminders,
-                               # web-search, system-events, night-light, downloads, panel
+                               # web-search, system-events, night-light, downloads, clock, panel
 om plugin add window-halves    # fetched from GitHub into lib/, plus rules.d/window-halves.lua (options go there)
 om plugin add you/repo         # any repository whose root is a plugin; you/repo/dir for one inside it;
                                # a GitHub browser URL, any git URL (--path, --ref), or ./a-directory

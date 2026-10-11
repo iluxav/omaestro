@@ -203,8 +203,21 @@ impl Hypr for FakeHypr {
             } else {
                 format!("bind@{}", hotkey.submap)
             };
+            let flags = hotkey.flags;
+            let flags: Vec<&str> = [
+                (flags.release, "release"),
+                (flags.non_consuming, "non_consuming"),
+                (flags.ignore_mods, "ignore_mods"),
+            ]
+            .into_iter()
+            .filter_map(|(on, name)| on.then_some(name))
+            .collect();
+            let flags = match flags.is_empty() {
+                true => String::new(),
+                false => format!(" ({})", flags.join(", ")),
+            };
             self.journal.push(format!(
-                "{at} {} -> {action} [{}]",
+                "{at} {} -> {action} [{}]{flags}",
                 hotkey.chord, hotkey.description
             ));
             state.binds.push(BindInfo {
