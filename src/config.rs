@@ -49,6 +49,30 @@ pub fn default_socket() -> Result<PathBuf> {
     Ok(PathBuf::from(dir).join("omaestro.sock"))
 }
 
+/// Where omaestro's own quickshell gets its files (`backend/ui.rs`): beside
+/// the socket when that is inside `$XDG_RUNTIME_DIR`, else
+/// `$XDG_RUNTIME_DIR/omaestro-ui`. Never a shared directory like /tmp (a
+/// `--socket` there): quickshell runs whatever QML it finds in it.
+pub fn ui_dir(socket: &Path) -> Result<PathBuf> {
+    let runtime = env::var_os("XDG_RUNTIME_DIR")
+        .filter(|v| !v.is_empty())
+        .context("XDG_RUNTIME_DIR is unset, cannot place omaestro's quickshell files")?;
+    let runtime = Path::new(&runtime)
+        .canonicalize()
+        .context("finding XDG_RUNTIME_DIR")?;
+    Ok(ui_dir_in(&runtime, socket))
+}
+
+/// `ui_dir` with the runtime directory given, already canonical.
+fn ui_dir_in(runtime: &Path, socket: &Path) -> PathBuf {
+    // Canonical, so `..` cannot walk out of the runtime directory.
+    let beside = socket.parent().and_then(|dir| dir.canonicalize().ok());
+    match beside {
+        Some(dir) if dir.starts_with(runtime) => dir.join("omaestro-ui"),
+        _ => runtime.join("omaestro-ui"),
+    }
+}
+
 /// `omaestro.toml`. Every key is optional.
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -271,5 +295,39 @@ mod tests {
         assert_eq!(chord(Some("emacs")), "CTRL+Y");
         // The user's table wins over the built-in terminal list.
         assert_eq!(chord(Some("kitty")), "CTRL+V");
+    }
+
+    #[test]
+    fn the_quickshell_files_stay_in_the_runtime_directory() {
+        let tmp = TempDir::new("ui-dir");
+        let made = |path: PathBuf| {
+            fs::create_dir_all(&path).unwrap();
+            path.canonicalize().unwrap()
+        };
+        let runtime = made(tmp.path().join("runtime"));
+        let session = made(runtime.join("smoke"));
+        let shared = made(tmp.path().join("shared"));
+        // The default socket, or one in a directory of the session: beside it.
+        assert_eq!(
+            ui_dir_in(&runtime, &runtime.join("omaestro.sock")),
+            runtime.join("omaestro-ui")
+        );
+        assert_eq!(
+            ui_dir_in(&runtime, &session.join("om.sock")),
+            session.join("omaestro-ui")
+        );
+        // Anywhere else, `..` included: the runtime directory itself.
+        for socket in [
+            shared.join("om.sock"),
+            session.join("../../shared/om.sock"),
+            PathBuf::from("om.sock"),
+        ] {
+            assert_eq!(
+                ui_dir_in(&runtime, &socket),
+                runtime.join("omaestro-ui"),
+                "{}",
+                socket.display()
+            );
+        }
     }
 }

@@ -13,6 +13,7 @@
 //! Neither: `MissingTool`, and the API sends a notification instead.
 
 use std::io::ErrorKind;
+use std::os::unix::fs::DirBuilderExt;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
@@ -281,9 +282,13 @@ async fn omarchy(method: &str, args: &[&str]) -> std::result::Result<String, Mis
 }
 
 /// Writes our instance's files, leaving alone those already right:
-/// quickshell reloads on every change it sees.
+/// quickshell reloads on every change it sees. The directory is the user's
+/// alone: quickshell runs what is in it.
 fn write_files(dir: &Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(dir)?;
     for (name, text) in FILES {
         let path = dir.join(name);
         if std::fs::read_to_string(&path).ok().as_deref() != Some(text) {

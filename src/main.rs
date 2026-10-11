@@ -359,8 +359,9 @@ async fn daemon(socket: &Path, config_dir: Option<PathBuf>, foreground: bool) ->
         trigger_command: runtime::hotkeys::trigger_command(&exe, custom_socket),
         state_dir,
     };
-    // omaestro's own quickshell, when it needs one, next to the socket.
-    let backends = Backends::real(socket.with_file_name("omaestro-ui"))?;
+    // omaestro's own quickshell, when it needs one: its files stay where
+    // only this user can write.
+    let backends = Backends::real(config::ui_dir(socket)?)?;
     let runtime = Runtime::start(loader, backends, info, events.clone())
         .await
         .map_err(anyhow::Error::msg)?;
