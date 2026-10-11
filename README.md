@@ -38,7 +38,8 @@ The project is `omaestro`; the command and the Lua table are both `om`.
   your Hyprland config. **App hotkeys** that exist only while one app has
   focus, so every other app keeps the chord. **Modes**: one chord, then
   single keys until Escape. **Taps**: SUPER (or ALT, CTRL, SHIFT) pressed
-  and let go on its own, while it keeps working in every chord.
+  and let go on its own, once or twice, while it keeps working in every
+  chord.
 - **Windows**: react when a window opens, gets focus or changes title;
   float it, center it, send it to a workspace, place it on a half or a third
   of the screen, arrange a whole desk in one call.
@@ -140,7 +141,7 @@ om plugin add window-halves text-tools        # several at once: the starter set
 | `system-events` | notifications on wake, USB devices and a low battery; network changes in the journal |
 | `night-light` | makes the screen warmer at 20:00 and normal again at 07:00 through hyprsunset; SUPER+ALT+S switches now; true colors while GIMP, Inkscape or darktable has focus |
 | `downloads` | a notification when something lands in `~/Downloads` |
-| `clock` | a tap of SUPER (or SUPER+ALT+A) shows the time, the date and the weather in large type in the middle of the screen for a second |
+| `clock` | a double tap of SUPER (or SUPER+ALT+A) shows the time, the date and the weather in large type in the middle of the screen for a second |
 | `panel` | SUPER+ALT+O opens the rules panel; only for configs from before `init.lua` had that line |
 
 `om plugin add` installs a plugin with its defaults and shows them in a
@@ -416,7 +417,8 @@ into the wrong place.
 **Taps** (`om.tap`) leave the key alone: SUPER still reaches your apps
 and still makes every chord. Hyprland tells omaestro when the key goes
 down and when it comes up; the rule runs when it came up within `within`
-(0.3 s by default) and no chord was made in between. A chord with a key
+(0.3 s by default) and no chord was made in between, or with `count = 2`
+on the second such tap, pressed within `within` of the first. A chord with a key
 Hyprland has no bind for (SUPER+a letter an app uses, or SUPER and a mouse
 click) does not cancel the tap, so keep `within` short.
 
@@ -453,6 +455,7 @@ om.hotkey("SUPER + ALT + J", fn, {label = "Rewrite the selection"})  -- named, f
 om.app_hotkey("^firefox$", "CTRL + S", fn)       -- only while a matching window has focus; or {class=, title=}
 om.tap("SUPER", fn, {within = 0.3})              -- SUPER let go on its own within 0.3 s; also ALT, CTRL, SHIFT
                                                  -- (left keys) and SUPER_R, ALT_R, CTRL_R, SHIFT_R
+om.tap("SUPER", fn, {count = 2})                 -- a double tap: the second press within 0.3 s of the first
 om.on_focus({class = "^firefox$"}, fn)           -- fn(win); matchers are Lua patterns, both must match
 om.on_blur(matcher, fn) om.on_open(matcher, fn) om.on_close(matcher, fn) om.on_title(matcher, fn)
 om.on_workspace(fn)                              -- fn({id, name})

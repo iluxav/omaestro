@@ -557,20 +557,23 @@ b = [x for x in json.load(sys.stdin) if x["key"] == "Super_L" and x["description
 sys.exit(0 if sorted(x["release"] for x in b) == [False, True] and all(x["non_consuming"] for x in b) else 1)'
   }
   wait_for "its SUPER tap is two binds on Super_L that pass the key on" tap_binds
-  quick_tap() { "$OM" trigger tap:Super_L/down >/dev/null && [[ "$("$OM" trigger tap:Super_L)" == "fired tap:Super_L" ]]; }
-  check "a quick tap, as those binds report it, fires" quick_tap
+  # A quick tap as those binds report it: the press, then the release.
+  quick_tap() { "$OM" trigger tap:Super_L/down >/dev/null && "$OM" trigger tap:Super_L; }
+  expect "one quick tap is the first of a double tap" "tap:Super_L: tap 1 of 2" quick_tap
+  expect "a second one right after fires" "fired tap:Super_L" quick_tap
   wait_for "and shows the card" card_open
   wait_for "for a second" card_closed
   if [[ "$PRESS" == 1 ]]; then
     taps() { grep -c "tap:Super_L: fired" "$LOG"; }
     before=$(taps)
-    echo "      click into the nested Hyprland window and tap SUPER on its own (30 seconds)"
+    echo "      click into the nested Hyprland window and tap SUPER twice, quickly (30 seconds)"
     for _ in $(seq 300); do [[ "$(taps)" -gt "$before" ]] && break; sleep 0.1; done
-    if [[ "$(taps)" -gt "$before" ]]; then pass "tapping SUPER shows the clock"; else fail "tapping SUPER shows the clock"; fi
+    if [[ "$(taps)" -gt "$before" ]]; then pass "a double tap of SUPER shows the clock"; else fail "a double tap of SUPER shows the clock"; fi
+    sleep 2
     before=$(taps)
-    echo "      now press SUPER+Q (a chord), then hold SUPER for a second and let go (10 seconds)"
+    echo "      now tap SUPER once, wait, press SUPER+Q (a chord), then hold SUPER for a second (10 seconds)"
     sleep 10
-    if [[ "$(taps)" == "$before" ]]; then pass "a chord or a long hold does not"; else fail "a chord or a long hold does not"; fi
+    if [[ "$(taps)" == "$before" ]]; then pass "a single tap, a chord or a long hold does not"; else fail "a single tap, a chord or a long hold does not"; fi
   else
     skip "tapping SUPER by hand (run with --press to include it)"
   fi

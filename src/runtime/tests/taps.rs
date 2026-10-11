@@ -85,6 +85,29 @@ async fn within_sets_how_long_the_key_may_be_down() {
     assert_eq!(h.titles(), ["slow tap"]);
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_double_tap_fires_once_and_a_single_tap_does_not() {
+    let h = Harness::start(&[(
+        "init.lua",
+        "om.tap('SUPER', function() om.notify('double') end, {count = 2})",
+    )])
+    .await;
+    let ms = Duration::from_millis;
+    assert_eq!(
+        tap(&h, ID, ms(90)).await,
+        Response::ok("tap:Super_L: tap 1 of 2")
+    );
+    // Too long a pause: the next tap starts over.
+    tokio::time::sleep(ms(600)).await;
+    assert_eq!(
+        tap(&h, ID, ms(90)).await,
+        Response::ok("tap:Super_L: tap 1 of 2")
+    );
+    tokio::time::sleep(ms(150)).await;
+    assert_eq!(tap(&h, ID, ms(90)).await, Response::ok("fired tap:Super_L"));
+    assert_eq!(h.titles(), ["double"]);
+}
+
 #[tokio::test]
 async fn a_tap_shares_its_key_with_nothing() {
     let h = Harness::start(&[]).await;
@@ -96,6 +119,10 @@ async fn a_tap_shares_its_key_with_nothing() {
         (
             "om.tap('SUPER', function() end, {within = 0})",
             "om.tap: within is a number of seconds above 0, not 0",
+        ),
+        (
+            "om.tap('SUPER', function() end, {count = 0})",
+            "om.tap: count is how many taps in a row, 1 to 5, not 0",
         ),
         (
             "om.hotkey('Super_L', function() end)\nom.tap('SUPER', function() end)",

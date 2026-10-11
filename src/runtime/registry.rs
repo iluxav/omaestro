@@ -20,8 +20,12 @@ pub enum TriggerKind {
     /// window matching `matcher` has focus.
     AppHotkey { chord: Chord, matcher: Matcher },
     /// `om.tap(key, fn)`: a modifier key alone (`Super_L`), let go within
-    /// `within` (`runtime/taps.rs`).
-    Tap { chord: Chord, within: Duration },
+    /// `within`, `count` times in a row (`runtime/taps.rs`).
+    Tap {
+        chord: Chord,
+        within: Duration,
+        count: u32,
+    },
     /// `om.on_focus(matcher, fn)`: a matching window got focus.
     Focus(Matcher),
     /// `om.on_blur(matcher, fn)`: a matching window lost focus.

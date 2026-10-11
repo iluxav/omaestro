@@ -1,7 +1,8 @@
 //! `om.tap(key, fn, opts)`: a modifier key pressed and let go on its own,
-//! within `opts.within` seconds (0.3 unless the rule says). The key keeps
-//! its job: chords with it work as before, and a press that made one never
-//! fires (`runtime/taps.rs`).
+//! within `opts.within` seconds (0.3 unless the rule says), `opts.count`
+//! times in a row (1: a single tap, 2: a double tap), each tap within
+//! `within` of the last. The key keeps its job: chords with it work as
+//! before, and a press that made one is no tap (`runtime/taps.rs`).
 
 use std::time::Duration;
 
@@ -35,6 +36,21 @@ fn key(name: &str) -> Option<&'static str> {
         .map(|(_, key)| *key)
 }
 
+fn count_from(options: Option<&Table>) -> Result<u32> {
+    let count = match options {
+        Some(options) => options.get::<Option<i64>>("count")?.unwrap_or(1),
+        None => 1,
+    };
+    u32::try_from(count)
+        .ok()
+        .filter(|count| (1..=5).contains(count))
+        .ok_or_else(|| {
+            Error::runtime(format!(
+                "om.tap: count is how many taps in a row, 1 to 5, not {count}"
+            ))
+        })
+}
+
 fn within_from(options: Option<&Table>) -> Result<Duration> {
     let seconds = match options {
         Some(options) => options
@@ -64,6 +80,7 @@ pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
                     )));
                 };
                 let within = within_from(options.as_ref())?;
+                let count = count_from(options.as_ref())?;
                 let chord = Chord::parse(key).map_err(Error::runtime)?;
                 {
                     let registry = registry.lock();
@@ -79,7 +96,11 @@ pub fn install(lua: &Lua, om: &Table, cx: &Context) -> Result<()> {
                 }
                 let label = label_from("tap", options)?;
                 let id = Id::Fixed(format!("tap:{key}"));
-                let kind = TriggerKind::Tap { chord, within };
+                let kind = TriggerKind::Tap {
+                    chord,
+                    within,
+                    count,
+                };
                 register(lua, &registry, &triggers_changed, id, kind, handler, label)
             },
         )?,

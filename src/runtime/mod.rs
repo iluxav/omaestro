@@ -357,14 +357,18 @@ impl Runtime {
             }
             None => return Err(format!("no trigger named '{id}'")),
         };
-        if let TriggerKind::Tap { within, .. } = &trigger.kind {
-            match self.taps.release(id) {
-                Some(held) if held <= *within => {}
-                Some(held) => {
-                    tracing::debug!("{id}: held {} ms, not a tap", held.as_millis());
-                    return Ok(format!("{id}: held {} ms, not a tap", held.as_millis()));
+        if let TriggerKind::Tap { within, count, .. } = &trigger.kind {
+            let not_yet = match self.taps.release(id, *within, *count) {
+                taps::Release::Fire => None,
+                taps::Release::Counted(run) => Some(format!("{id}: tap {run} of {count}")),
+                taps::Release::Held(held) => {
+                    Some(format!("{id}: held {} ms, not a tap", held.as_millis()))
                 }
-                None => return Ok(format!("{id}: no press seen, not a tap")),
+                taps::Release::Unseen => Some(format!("{id}: no press seen, not a tap")),
+            };
+            if let Some(message) = not_yet {
+                tracing::debug!("{message}");
+                return Ok(message);
             }
         }
         if let TriggerKind::ModeKey { once: true, .. } = &trigger.kind {

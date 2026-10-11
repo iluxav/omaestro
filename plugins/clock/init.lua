@@ -1,5 +1,5 @@
 -- clock: the time, the date and the weather in large type in the middle of
--- the screen for a moment, when SUPER is tapped on its own. The weather
+-- the screen for a moment, when SUPER is tapped twice on its own. The weather
 -- comes from wttr.in and is fetched in the background, so the card shows at
 -- once.
 --
@@ -7,7 +7,8 @@
 --
 -- Options (false switches one off):
 --   tap      = "SUPER"             the key to tap: SUPER, SUPER_R, ALT, CTRL, SHIFT; "off": none
---   within   = 0.3                 seconds the key may be down for a tap
+--   taps     = 2                   taps in a row: 2 a double tap, 1 a single one
+--   within   = 0.3                 seconds the key may be down, and between two taps
 --   chord    = "SUPER + ALT + A"   shows the card too
 --   seconds  = 1                   how long it stays up
 --   time     = "%H:%M"             os.date formats; "%I:%M %p" for 12-hour
@@ -53,6 +54,7 @@ function M.setup(opts)
     error("clock needs a newer omaestro, one with om.show and om.tap: update om", 2)
   end
   local tap = option(opts.tap, "SUPER")
+  local taps = option(opts.taps, 2)
   local within = option(opts.within, 0.3)
   local chord = option(opts.chord, "SUPER + ALT + A")
   local seconds = option(opts.seconds, 1)
@@ -113,7 +115,8 @@ function M.setup(opts)
   end
 
   if tap and tap ~= "off" then
-    om.tap(tap, show, { within = within, label = "Show the time, date and weather (tap " .. tap .. ")" })
+    local what = taps == 1 and "tap " .. tap or tap .. " tapped " .. taps .. " times"
+    om.tap(tap, show, { count = taps, within = within, label = "Show the time, date and weather (" .. what .. ")" })
   end
   if chord then
     om.hotkey(chord, show, { label = "Show the time, date and weather" })

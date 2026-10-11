@@ -49,6 +49,7 @@ om.app_hotkey("^firefox$", "CTRL + S", fn)       -- bound only while a matching 
                                                  -- matcher: class pattern or {class=, title=}
 om.tap("SUPER", fn, {within = 0.3})              -- SUPER pressed and let go alone, quickly; ALT, CTRL,
                                                  -- SHIFT, SUPER_R...; the key keeps working in chords
+om.tap("SUPER", fn, {count = 2})                 -- a double tap (each tap and the pause between within 0.3 s)
 om.on_focus({class = "^firefox$"}, fn)           -- fn(win); also on_blur, on_open, on_close, on_title
 om.on_workspace(fn)  om.on_monitor(fn)           -- fn({id, name}) / fn({name, change})
 om.on_clipboard(fn)                              -- fn(text); "" for images

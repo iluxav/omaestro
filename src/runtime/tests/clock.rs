@@ -171,15 +171,26 @@ async fn an_om_without_cards_is_told_on_load() {
     );
 }
 
+/// One quick tap of the key, as Hyprland's two binds report it.
+async fn tap(h: &Harness, key: &str) -> Response {
+    assert!(h.trigger(&format!("tap:{key}/down")).await.ok);
+    tokio::time::sleep(Duration::from_millis(90)).await;
+    h.trigger(&format!("tap:{key}")).await
+}
+
 #[tokio::test(start_paused = true)]
-async fn a_tap_of_super_shows_it_too() {
+async fn a_double_tap_of_super_shows_it_and_a_single_one_does_not() {
     let h = loaded(RULE, |_| {}).await;
-    assert!(h.trigger("tap:Super_L/down").await.ok);
-    tokio::time::sleep(Duration::from_millis(150)).await;
     assert_eq!(
-        h.trigger("tap:Super_L").await,
-        Response::ok("fired tap:Super_L")
+        tap(&h, "Super_L").await,
+        Response::ok("tap:Super_L: tap 1 of 2")
     );
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    h.settle().await;
+    assert!(h.fakes.ui.shown().is_empty());
+    assert!(tap(&h, "Super_L").await.ok);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert_eq!(tap(&h, "Super_L").await, Response::ok("fired tap:Super_L"));
     h.settle().await;
     assert_eq!(h.fakes.ui.shown().len(), 1);
 }
@@ -193,7 +204,7 @@ async fn the_tap_and_the_chord_can_each_be_switched_off() {
     .await;
     assert_eq!(h.status().await.triggers, 0);
     let h = loaded(
-        "om.use('clock').setup({tap = 'ALT', within = 0.5, chord = false, weather = false})",
+        "om.use('clock').setup({tap = 'ALT', taps = 1, within = 0.5, chord = false, weather = false})",
         |_| {},
     )
     .await;

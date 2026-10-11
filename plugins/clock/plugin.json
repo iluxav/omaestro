@@ -8,9 +8,15 @@
       "default": "SUPER"
     },
     {
+      "key": "taps",
+      "type": "number",
+      "label": "Taps in a row (2: a double tap, 1: a single one)",
+      "default": 2
+    },
+    {
       "key": "within",
       "type": "number",
-      "label": "Seconds the key may be down for a tap",
+      "label": "Seconds the key may be down, and between two taps",
       "default": 0.3
     },
     {

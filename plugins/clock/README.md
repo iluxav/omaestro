@@ -1,8 +1,9 @@
 # clock
 
-Tap SUPER on its own (press and let go within 0.3 s) and the time, the
-date and the weather show in large type in the middle of the screen for a
-second. SUPER+ALT+A does the same:
+Tap SUPER twice on its own, quickly (each press let go within 0.3 s, the
+second within 0.3 s of the first), and the time, the date and the weather
+show in large type in the middle of the screen for a second. A single tap
+does nothing. SUPER+ALT+A does the same:
 
 ```
      14:32
@@ -24,12 +25,13 @@ IP address tells it where you are.
 
 SUPER keeps its job: apps still get it, every shortcut with it works as
 before, and a press that ran a shortcut (SUPER+J) never shows the clock,
-however quick. A SUPER held longer than `within` does not either. A quick
-SUPER with a key that is no shortcut, or with a mouse click, does count.
+however quick, and starts the count over. A SUPER held longer than
+`within` does not count either. A quick SUPER with a key that is no
+shortcut, or with a mouse click, does count as a tap.
 
 | Key | What |
 |---|---|
-| SUPER, tapped alone | the time, the date and the weather, for a second |
+| SUPER, tapped twice alone | the time, the date and the weather, for a second |
 | SUPER+ALT+A | the same |
 
 ## Options
@@ -38,7 +40,8 @@ SUPER with a key that is no shortcut, or with a mouse click, does count.
 -- rules.d/clock.lua
 om.use("clock").setup({
   tap = "SUPER",            -- SUPER_R, ALT, CTRL, SHIFT; "off": no tap
-  within = 0.3,             -- seconds the key may be down for a tap
+  taps = 2,                 -- 1: a single tap is enough
+  within = 0.3,             -- seconds the key may be down, and between the taps
   chord = "SUPER + ALT + A",  -- false: no chord
   seconds = 1,              -- how long the card stays up
   time = "%H:%M",           -- "%I:%M %p" for 12-hour
