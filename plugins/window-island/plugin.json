@@ -1,0 +1,12 @@
+{
+  "options": [
+    { "key": "toggle", "type": "chord", "label": "Dock or undock the focused window", "default": "SUPER + CTRL + I", "optional": true },
+    { "key": "narrower", "type": "chord", "label": "Narrow the island", "default": "SUPER + CTRL + bracketleft", "optional": true },
+    { "key": "wider", "type": "chord", "label": "Widen the island", "default": "SUPER + CTRL + bracketright", "optional": true },
+    { "key": "width", "type": "number", "label": "Initial island width in logical pixels", "default": 800 },
+    { "key": "step", "type": "number", "label": "Width adjustment in logical pixels", "default": 80 },
+    { "key": "min_width", "type": "number", "label": "Minimum island width", "default": 240 },
+    { "key": "min_remaining", "type": "number", "label": "Minimum width left for normal tiles", "default": 480 },
+    { "key": "gap", "type": "number", "label": "Inset around the island window", "default": 10 }
+  ]
+}
