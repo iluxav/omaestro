@@ -69,16 +69,18 @@ end
 width = math.floor(width)
 
 local slot = manager.slots[request.monitor]
+local selector = "m[" .. request.monitor .. "]"
 local config = table.concat({ width, gaps.top, gaps.right, gaps.bottom, gaps.left }, ":")
-if not slot or slot.config ~= config then
-  -- This selector belongs to the plugin; normal and special workspaces are
-  -- deliberately separate. Replacing our active rule does not grow a list
-  -- on every heartbeat or width adjustment.
+if not slot or slot.config ~= config or slot.selector ~= selector then
+  -- Include special workspaces so scratchpad tiles overlay the remaining
+  -- area to the right. Replacing our selector keeps heartbeats idempotent.
   local rule = hl.workspace_rule({
-    workspace = "s[false] m[" .. request.monitor .. "]",
+    workspace = selector,
     gaps_out = { top = gaps.top, right = gaps.right, bottom = gaps.bottom, left = gaps.left + width },
   })
-  slot = { rule = rule, config = config }
+  -- Retire the old normal-only selector when upgrading a running island.
+  if slot and slot.selector ~= selector then slot.rule:set_enabled(false) end
+  slot = { rule = rule, config = config, selector = selector }
   manager.slots[request.monitor] = slot
 end
 slot.entry = entry

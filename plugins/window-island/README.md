@@ -59,15 +59,15 @@ refused. Bars, display scale, rotation and monitor offsets are accounted for.
 ## Behavior and cleanup
 
 The window floats and is pinned internally. A temporary Hyprland workspace
-rule reserves its column using outer gaps, so normal tiles do not overlap
-it. No files under `~/.config/hypr` are written and no display mode, scale
+rule reserves its column using outer gaps, so regular and scratchpad tiles
+do not overlap it. No files under `~/.config/hypr` are written and no display mode, scale
 or bar setting is changed. Remove any manually configured island reservation
 before using this plugin, so the two reservations do not add together.
 
-The plugin owns the workspace selector `s[false] m[MONITOR]` for each active
+The plugin owns the workspace selector `m[MONITOR]` for each active
 island monitor; do not declare an identical selector yourself. During docking,
-normal workspaces on that monitor use the global outer gaps plus the island
-width. Other workspace settings remain in effect. Undocking disables that
+regular and special workspaces on that monitor use the global outer gaps
+plus the island width. Other workspace settings remain in effect. Undocking disables that
 temporary rule, restoring the underlying workspace gap rules.
 
 Rules reloads and daemon restarts restore active islands. A Hyprland config
@@ -86,14 +86,17 @@ om plugin remove window-island
 This version uses hotkeys to dock and change width. It has no draggable
 divider or drag-to-dock behavior. Special workspaces and fullscreen windows
 cannot be docked. Fullscreen windows and unrelated floating windows can
-cover the island; its column is reserved for normal tiling only.
+cover the island; its column is reserved for tiled windows only. Scratchpad
+tiles retain their overlay behavior and are laid out in the remaining area
+to the right, including the second scratchpad.
 
 ## Verify in a test session
 
 Install into a scratch omaestro configuration in a nested Hyprland, as in
 `scripts/smoke.sh`; keep `HYPRLAND_NO_SD_VARS=1`. Dock a scratch terminal,
 open another tile and switch workspaces: the terminal stays on the left,
-and the other tile starts beyond the column. Check width controls, undock,
+and the other tile starts beyond the column. Open both scratchpads and check
+that their tiles overlay the right side. Check width controls, undock,
 close, rule reload, compositor reload and daemon exit. Confirm the gap
 disappears and the window's prior state returns. This needs Hyprland 0.56's
 Lua API (`hl.workspace_rule`, window dispatchers and `hl.timer`).
