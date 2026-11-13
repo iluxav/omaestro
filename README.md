@@ -32,6 +32,8 @@ end)
 
 The project is `omaestro`; the command and the Lua table are both `om`.
 
+What it can do today and what has changed: [osfeed.dev/p/iluxav/omaestro](https://osfeed.dev/p/iluxav/omaestro).
+
 ## What it does
 
 - **Hotkeys** in Hyprland's own syntax, registered live, never written to
